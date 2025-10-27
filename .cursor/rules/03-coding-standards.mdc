@@ -1,0 +1,25 @@
+---
+description: コーディング規約とリンタ設定
+globs: ["docs/development/coding_standards/**/*.md", "eslint.config.mjs", "tsconfig.json"]
+alwaysApply: false
+---
+
+# TypeScript
+
+- `strict` モードを維持。`any` は原則禁止
+- 型が曖昧な場合は型補完 (`z.infer` など) を検討し、`docs/development/coding_standards/frontend.md` を更新
+
+# ESLint
+
+- `npm run lint` で ESLint v9 を実行。Flat Config のルールを尊重する
+- ルール変更時は PR 説明に影響範囲と理由を必ず記載
+
+# コーディングスタイル
+
+- 関数コンポーネントを標準とし、必要に応じて `use client` を付与
+- Tailwind クラスは論理順序（レイアウト → サイズ → 色 → 状態）で並べ可読性を確保
+
+# 参照
+
+- `docs/development/coding_standards/frontend.md`
+- `docs/development/workflow.md`

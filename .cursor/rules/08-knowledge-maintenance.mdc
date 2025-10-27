@@ -1,0 +1,21 @@
+---
+description: ナレッジベースの維持運用ルール
+globs: ["docs/knowledge/**/*.md", "docs/README.md"]
+alwaysApply: false
+---
+
+# ナレッジ更新フロー
+
+1. タスク完了後に `/knowledge` を実行し、学びをまとめる
+2. `docs/knowledge/<yyyy-mm-dd>-<topic>.md` を作成
+3. 重要度が高い場合は既存ドキュメント (`docs/development/*` など) も更新
+
+# チェックリスト
+
+- `docs/knowledge/maintenance-checklist.md` を参照し、テンプレートを守る
+- 既存情報との重複を避ける。更新が必要なら追記ではなく改訂を検討
+
+# レビュー観点
+
+- 再現性のある手順、大事な前提、参考リンクを含める
+- PR でドキュメント差分が確認できるようにする

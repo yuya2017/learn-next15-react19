@@ -1,0 +1,23 @@
+---
+description: Codex / Cursor 用ルールの総覧
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# ルール概要
+
+- このリポジトリは Next.js 15 + React 19 + Tailwind CSS 4 のサンプルアプリです
+- Codex は実装前に必ず `specs/` の最新情報と `docs/` の知識ベースを参照してください
+- フェーズ・命令は `AGENTS.md` に従い、Phase 1-3 は Best-of-N を実施します
+
+# 禁則事項
+
+1. `node_modules/` や生成物を直接編集しない
+2. 未確認のまま外部 API キーや秘匿情報をコミットしない
+3. lint / build を通過していない状態で PR 用差分を生成しない
+
+# 参照
+
+- `docs/README.md`
+- `docs/development/workflow.md`
+- `docs/knowledge/maintenance-checklist.md`

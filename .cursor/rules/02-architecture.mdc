@@ -1,0 +1,28 @@
+---
+description: アーキテクチャの基本方針と注意点
+globs: ["docs/architecture/**/*.md", "next.config.ts", "src/app/**/*"]
+alwaysApply: false
+---
+
+# 概要
+
+- Next.js 15 の App Router を使用。ルートはファイルシステムベース
+- React 19 Server Components を優先。クライアント状態が必要な場合のみ `"use client"`
+- Tailwind 4 は PostCSS 経由で適用される
+
+# 実装ルール
+
+1. **ページ追加**: `src/app/<route>/page.tsx` を作成し、必要に応じて `layout.tsx` を追加
+2. **スタイル**: グローバルに適用する場合は `globals.css`、コンポーネント内はユーティリティクラスを使用
+3. **画像**: `next/image` を使用し、`public/` のアセットを参照
+4. **設定変更**: ランタイムや画像ドメイン調整は `next.config.ts` を更新
+
+# 参照ドキュメント
+
+- `docs/architecture/overview.md`
+- `docs/development/workflow.md`
+
+# 注意点
+
+- SSR と SSG の切り替えは `export const dynamic = "force-static"` などを利用
+- API 連携が必要になった場合は Next.js Route Handler (`src/app/api`) を検討

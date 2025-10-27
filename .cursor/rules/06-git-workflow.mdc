@@ -1,0 +1,26 @@
+---
+description: Git 運用ルール
+globs: [".gitignore", "docs/development/workflow.md"]
+alwaysApply: false
+---
+
+# ブランチ戦略
+
+- `main`: 常にデプロイ可能
+- `feature/<ticket-id>-<slug>`: 実装タスク用
+- `chore/<topic>`: 整備タスク
+
+# コミットメッセージ
+
+- 形式例: `feat: add hero section`, `fix: correct image alt text`, `chore: update eslint`
+- 1 コミット 1 トピックを基本とする
+
+# PR フォーマット
+
+- 目的、変更概要、テスト結果、関連ドキュメントを記載
+- `specs/` と `docs/` の差分がある場合はリンクを添付
+
+# レビュー
+
+- Codex の自動レビューを活用しつつ、人間が最終確認を行う
+- `docs/knowledge/maintenance-checklist.md` に従い、学びを記録

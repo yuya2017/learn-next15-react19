@@ -1,0 +1,27 @@
+---
+description: フロントエンド実装のベストプラクティス
+globs: ["src/app/**/*.{tsx,ts,css}", "docs/development/coding_standards/frontend.md"]
+alwaysApply: false
+---
+
+# UI 実装方針
+
+- React 19 Server Components をデフォルトとし、フォームやイベントハンドラが必要な場合だけ Client Component にする
+- コンポーネントは関心ごと別に整理し、`src/app/(segment)/components/` を利用する
+
+# Tailwind ルール
+
+- クラス名は可読性を保つため論理グループ順に並べる
+- カスタムテーマが必要な場合は `tailwind.config.ts` を追加し、`docs/development/coding_standards/frontend.md` を更新
+- ダークモードは `class` ストラテジを利用。条件付きクラスは `clsx` を使用
+
+# アクセシビリティ
+
+- 画像には `alt` を必ず設定
+- ボタンとリンクを適切に使い分ける。リンクに `role="button"` を付けるのは避ける
+- フォーカスインジケータを変更する場合は WCAG 2.1 AA のコントラスト比を満たす
+
+# 参照
+
+- `docs/development/coding_standards/frontend.md`
+- `docs/troubleshooting/common-issues.md`

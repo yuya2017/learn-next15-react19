@@ -1,0 +1,31 @@
+---
+description: プロジェクト全体の概要とコンテキスト
+globs: ["README.md", "package.json", "src/app/**/*"]
+alwaysApply: false
+---
+
+# プロジェクト概要
+
+- 名前: `learn-next15-react19`
+- 目的: Next.js 15 / React 19 / Tailwind 4 の学習用アプリ
+- 主要技術: TypeScript, Next.js App Router, Tailwind, ESLint Flat Config
+
+# ディレクトリ構成
+
+- `src/app/` – ページ、レイアウト、スタイル
+- `docs/` – ナレッジベース (詳細は `docs/README.md`)
+- `specs/` – タスク別成果物
+- `.cursor/` – Codex ルール＆MCP
+
+# 重要ファイル
+
+- `src/app/layout.tsx`: HTML スケルトンと `<body>` 設定
+- `src/app/page.tsx`: トップページ例
+- `eslint.config.mjs`: ESLint Flat Config
+- `next.config.ts`: Next.js 設定
+
+# 進行ルール
+
+- ブランチは `feature/*` / `chore/*` で切る
+- Codex が生成する差分は PR 前にローカルで確認
+- 仕様・設計の変更は必ず `specs/` と `docs/` に反映
