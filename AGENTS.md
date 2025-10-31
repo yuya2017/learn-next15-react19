@@ -70,6 +70,14 @@ Codex で作業する際は以下のフェーズを順番に進め、必要に�
 
 ---
 
+## 章別ベストプラクティス（Next.js 15 / React 19）
+
+- Zenn本「Next.js 15 / React 19 実践設計ガイド」第1〜7章を基準に、Server Components 前提のディレクトリ構成・コンポーネント設計・データ取得/更新・状態管理・キャッシュ・エラーハンドリングまでの原則を定義
+- 章ごとの詳細ルールとアンチパターンは `.cursor/rules/09-next15-react19-guidelines.mdc` を参照
+- 2025-10-21 版を基準とし、書籍更新時は本セクションと `.cursor/rules/09-next15-react19-guidelines.mdc` を同期すること
+
+---
+
 ## コマンドテンプレート
 
 ```text

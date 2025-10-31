@@ -1,0 +1,59 @@
+---
+description: Zenn本「Next.js 15 / React 19 実践設計ガイド」第1〜7章を反映した実装ルール
+globs: ["src/**/*.{ts,tsx,js,jsx}", "src/**/*.css", "docs/**/*", "AGENTS.md"]
+alwaysApply: false
+---
+
+# 第1章 基本ルールとディレクトリ構成
+
+- App Router 前提で `/src/app` を唯一のエントリとし、`(group)` セグメントで責務を分ける。`@shared` など擬似エイリアスは避け、`tsconfig.json` の `paths` を利用して共通化する。
+- ページ配下は「page（UI表示）」「layout（共通枠）」「loading（並列ロード）」「error（ハンドリング）」の最小構成を維持。必要がない要素は作成しない。
+- Server Component をデフォルトとし、ブラウザ API やイベント処理が必要なモジュールだけ `"use client"` を宣言した Client Component に分離する。
+- `src/app/(feature)/components` に UI パーツを、`src/app/(feature)/lib` にドメインロジックを配置し、`src/lib/` に横断的ユーティリティを集約する。
+
+# 第2章 コンポーネント設計
+
+- Server Component では props をシリアライズ可能な値に限定し、非同期処理は直接 `await` してレンダリングブロックを減らす。Client Component へは必要最小限のデータのみ渡す。
+- UI 構成は Slot ベースで設計し、コンポーネントを「表示コンポーネント（UI）」「ラッパー」「データ取得コンポーネント」に分離する。コンポジションを重視し `children` でオーバーライド可能にする。
+- フォームやモーダルなど状態を持つ Client Component は、親コンポーネントからの props 数を3〜5件以内に抑え、残りは context かサブコンポーネントに整理する。
+- `export default` は避け名前付き export を徹底し、ファイル 1 つにつき主要コンポーネントを 1 つに保つ。
+
+# 第3章 データ取得
+
+- Server Component でのデータ取得は `async`/`await` を素直に使い、`Promise.all` で並列化する。フェッチ関数は `src/app/(feature)/lib/data.ts` などに切り出し、再利用時は `cache()` や `unstable_cache` でキャッシュ層を明示する。
+- `fetch` は Next.js 15 デフォルトの `force-cache` を活用しつつ、動的要件がある場合のみ `cache: "no-store"` や `revalidate` を設定する。キャッシュ境界をコメントで記録する。
+- ルート同士でデータソースを共有する際は Route Segment Config (`export const fetchCache`, `runtime`) を明示し、不要な動的化を避ける。
+- ストリーミングが有効な場合は `Suspense` + `loading.tsx` を組み合わせ、優先度の高いデータを先に描画する。
+
+# 第4章 データ更新
+
+- フォーム送信・ミューテーションは Server Action を第一選択とし、`"use server"` を付けた関数を `actions.ts` に置く。Client Component からは `useActionState` で呼び出し、入力検証は Action 内で実施する。
+- ミューテーション後のリフレッシュには `revalidatePath` / `revalidateTag` を利用し、`router.refresh()` は局所的な再描画が必要な場合に限定する。
+- 楽観的更新は `useOptimistic` を使い、失敗時のロールバックハンドリングを明記する。Server Action からエラーを `return { status: "error", message }` の形で返却し、Client 側で明示的に処理する。
+- 外部 API との通信は `src/app/api/*` 経由ではなく Server Action で完結させ、API Route は webhook や外部公開が必要な場合に限定する。
+
+# 第5章 状態管理
+
+- グローバル状態は最小限に抑え、永続化が必要な場合は Server Action + Cookie / DB を使う。React Context は描画ツリーをまたぐ必要がある状態に限定する。
+- Client Component 内の一時的な UI 状態は `useTransition` と組み合わせて更新し、重い計算は `useMemo` / `useCallback` ではなく Server Side で計算した値を渡す。
+- フォームフィールドやフィルタの状態は URL Search Params に同期して、再読み込み時の復元とリンク共有を可能にする。
+- サードパーティ状態管理ライブラリの利用は原則禁止。どうしても必要な場合は AGENTS.md の承認プロセスに従い提案する。
+
+# 第6章 キャッシュ戦略
+
+- `cacheLife`, `cacheTag`, `revalidateTag` を組み合わせ、リソースごとにキャッシュ寿命を設計する。タグは `module/resource` 形式で命名する。
+- `draftMode` を利用してプレビュー時はキャッシュを無効化し、公開環境では `cacheLife("standard")` を基本値とする。
+- PPR（Partial Prerendering）が不要な場合でも、静的化できるパスは `export const dynamic = "force-static"` で明示してビルド最適化する。
+- Edge Runtime を利用する場合は `cacheLife` の制約と`Request`/`Response` API制限を考慮し、Node.js と挙動が異なる箇所にコメントを残す。
+
+# 第7章 エラーハンドリング
+
+- ルートごとに `error.tsx` を用意し、ユーザー向けメッセージと再試行ボタンを提供する。`global-error.tsx` は最小限のフォールバックとして維持する。
+- Server Action とデータ取得関数では期待されるエラー（バリデーション、権限など）を `Result` 型で表現し、予期しない例外のみ `captureException`（Sentry 等）へ連携する。
+- React 19 の `use` 使用時はエラーが自動でバブルアップするため、`try/catch` よりセグメント単位の `error.tsx` を活用して UX を守る。
+- ログにはリクエスト識別子（`headers().get("x-request-id")` 等）を含め、`docs/troubleshooting/common-issues.md` の手順で再現性を確保する。
+
+# 運用メモ
+
+- このルールは 2025-10-21 公開版を基準とする。書籍アップデート時は章ごとの差分を確認し、必要に応じて本ファイルと AGENTS.md を更新する。
+- 章別詳細が必要になった場合は `docs/development/next15-react19/` 以下に補足資料を作成し、本ファイルからリンクする。
