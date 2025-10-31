@@ -1,16 +1,3 @@
 {
-  "mcpServers": {
-    "context7": {
-      "command": "context7",
-      "args": [],
-      "env": {},
-      "enabled": true
-    },
-    "chrome-devtools": {
-      "command": "chrome-devtools-mcp",
-      "args": [],
-      "env": {},
-      "enabled": true
-    }
-  }
+  "mcpServers": {}
 }

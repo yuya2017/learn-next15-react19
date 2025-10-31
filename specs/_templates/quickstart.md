@@ -1,14 +1,21 @@
-# quickstart.md テンプレート
+# quickstart テンプレート
+
+## ゴール
+- 実装着手から動作確認までの流れを 5 分で把握できる状態にする
 
 ## 開発開始手順
-1. ブランチ作成: `git switch -c feature/<ticket-id>-<slug>`
-2. 必要なサービスを起動: `npm run dev`
-3. 確認する URL: `http://localhost:3000/...`
+1. ブランチを作成: `git switch -c feature/<ticket-id>-<slug>`
+2. 依存サービスや環境変数を準備
+3. 開発サーバーを起動: `npm run dev`
+
+## 動作確認
+- アクセスする URL や画面: `http://localhost:3000/...`
+- 想定するシナリオや確認ポイント
 
 ## 参考リンク
 - デザイン / Figma:
 - API Docs / Swagger:
-- 関連タスク:
+- 関連タスクや仕様:
 
 ## 作業メモ
-- 進行中の課題やメモを箇条書きで残す
+- 進行中の課題や共有事項を箇条書きで残す
