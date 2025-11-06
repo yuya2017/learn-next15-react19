@@ -1,0 +1,456 @@
+---
+alwaysApply: true
+---
+# エラーハンドリング
+
+## 想定済みエラーはResult型で返す
+
+### エラーをthrowしない理由
+
+想定済みのエラーは、 `throw` せずにResult型で返すことを推奨します。
+
+### Result型の定義
+
+Result型は、成功時と失敗時で異なる型を返す、判別可能な共用体型（Discriminated Union）です。
+
+types/result.ts
+
+```ts
+type SuccessResult<T> = {
+  isSuccess: true;
+  data: T;
+};
+
+type ErrorResult = {
+  isSuccess: false;
+  errorMessage: string;
+};
+
+export type Result<S> = SuccessResult<S> | ErrorResult;
+```
+
+この型定義により、 `isSuccess` プロパティで成功・失敗を判定し、TypeScriptが自動的に型を絞り込んでくれます。
+
+### サーバーフェッチでの使用例
+
+サーバー側でのデータフェッチでは、Result型を使ってエラーを返します。
+
+lib/request.ts
+
+```ts
+import type { Result } from '@/types/result';
+
+export async function request<T>(
+  url: string,
+  options?: RequestInit
+): Promise<Result<T>> {
+  try {
+    const res = await fetch(url, options);
+
+    if (!res.ok) {
+      return {
+        isSuccess: false,
+        errorMessage: `HTTPエラー: ${res.status} ${res.statusText}`,
+      };
+    }
+
+    const data = await res.json();
+
+    return {
+      isSuccess: true,
+      data,
+    };
+  } catch (error) {
+    return {
+      isSuccess: false,
+      errorMessage: error instanceof Error ? error.message : '予期せぬエラーが発生しました',
+    };
+  }
+}
+```
+
+### Server Actionsでの使用
+
+Server Actionsでも同様にResult型を活用します。
+
+actions/users.ts
+
+```ts
+'use server';
+
+import { updateUserAPI } from '@/apis/users.server';
+import { revalidateTag } from 'next/cache';
+import type { Result } from '@/types/result';
+
+export async function updateUser(
+  userId: string,
+  data: { name: string }
+): Promise<Result<void>> {
+  try {
+    const result = await updateUserAPI(userId, data);
+
+    if (result.isSuccess) {
+      revalidateTag('users');
+    }
+
+    return result;
+  } catch (error) {
+    return {
+      isSuccess: false,
+      errorMessage: '予期しないエラーが発生しました',
+    };
+  }
+}
+```
+
+### クライアントフェッチでの扱い
+
+クライアントフェッチの場合は例外で、TanStack Queryのエラーハンドリング機能を活用し、エラーの状態を委任します。
+
+apis/users.client.ts
+
+```ts
+import type { User } from '@/types/user';
+
+export async function fetchUser(userId: string): Promise<User> {
+  const res = await fetch(`/api/users/${userId}`);
+
+  if (!res.ok) {
+    throw new Error('ユーザーの取得に失敗しました');
+  }
+
+  return await res.json();
+}
+```
+
+## コンポーネントで部分的にエラーUIを表示
+
+エラーが発生したときに画面全体をエラーUIで覆わず、コンポーネント単位で部分的にエラーUIを表示することが重要です。これにより、ユーザーは他の機能を引き続き利用でき、より良い体験を提供できます。
+
+### Server Componentでの部分的エラーUI
+
+Server ComponentではResult型を使って、コンポーネント内でエラーをハンドリングします。
+
+app/users/components/UserProfile.tsx
+
+```tsx
+import { fetchUserProfile } from '@/apis/users.server';
+
+export default async function UserProfile() {
+  const res = await fetchUserProfile();
+
+  if (!res.isSuccess) {
+    return (
+      <div className="error-container">
+        <h1>エラー</h1>
+        <p>{res.errorMessage}</p>
+      </div>
+    );
+  }
+
+  const user = res.data;
+
+  return (
+    <div>
+      <h1>ユーザー情報</h1>
+      <p>ユーザー名：{user.name}</p>
+    </div>
+  );
+}
+```
+
+app/users/page.tsx
+
+```tsx
+import { UserProfile } from './components/UserProfile';
+import { Tasks } from './components/Tasks';
+
+export default function Page() {
+  return (
+    <div>
+      <Suspense fallback={<p>loading...</p>}>
+        <UserProfile />
+      </Suspense>
+      <Suspense fallback={<p>loading...</p>}>
+        <Tasks />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Client Componentでの部分的エラーUI
+
+Client Componentでは、 `useQuery` のerrorプロパティを使って、コンポーネント内でエラーをハンドリングします。
+
+components/UserProfile.tsx
+
+```tsx
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { fetchUser } from '@/apis/users.client';
+
+type Props = {
+  userId: string;
+};
+
+export function UserProfile({ userId }: Props) {
+  const { data: user, isLoading, error } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => fetchUser(userId),
+  });
+
+  if (isLoading) {
+    return <p>読み込み中...</p>;
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <h2>エラー</h2>
+        <p>{error.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2>{user?.name}</h2>
+      <p>{user?.email}</p>
+    </div>
+  );
+}
+```
+
+### Server Actionsでの部分的エラーUI
+
+フォーム送信などのServer Actionsでも、コンポーネント内でエラー状態を管理します。
+
+components/UserEditForm.tsx
+
+```tsx
+'use client';
+
+import { useState, useTransition } from 'react';
+import { updateUser } from '@/actions/users';
+
+type Props = {
+  userId: string;
+  initialName: string;
+};
+
+export function UserEditForm({ userId, initialName }: Props) {
+  const [name, setName] = useState(initialName);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const handleSubmit = () => {
+    setError(null);
+
+    startTransition(async () => {
+      const result = await updateUser(userId, { name });
+
+      if (!result.isSuccess) {
+        setError(result.errorMessage);
+      } else {
+        alert('更新しました');
+      }
+    });
+  };
+
+  return (
+    <div>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <button onClick={handleSubmit} disabled={isPending}>
+        {isPending ? '更新中...' : '更新'}
+      </button>
+      {error && <p className="error-message">{error}</p>}
+    </div>
+  );
+}
+```
+
+## 予期せぬエラーのハンドリング
+
+想定済みのエラーはResult型やuseQueryで処理できますが、予期せぬエラー（予想外の例外、バグなど）は別の方法で対処する必要があります。Next.js 15では、 `error.tsx` と `global-error.tsx` を使ったError Boundary機能が用意されています。
+
+### error.tsxの役割
+
+`error.tsx` は、そのセグメント（ディレクトリ）とその配下の子セグメントで発生した予期せぬエラーをキャッチします。
+
+app/dashboard/error.tsx
+
+```tsx
+'use client';
+
+import { useEffect } from 'react';
+
+type Props = {
+  error: Error & { digest?: string };
+  reset: () => void;
+};
+
+export default function Error({ error, reset }: Props) {
+  useEffect(() => {
+    console.error('Error:', error);
+  }, [error]);
+
+  return (
+    <div className="error-page">
+      <h2>エラーが発生しました</h2>
+      <p>{error.message}</p>
+      <button onClick={reset}>再試行</button>
+    </div>
+  );
+}
+```
+
+### global-error.tsxの役割
+
+`global-error.tsx` は、ルートレイアウト（ `app/layout.tsx` ）で発生したエラーをキャッチするための特別なファイルです。
+
+app/global-error.tsx
+
+```tsx
+'use client';
+
+import { useEffect } from 'react';
+
+type Props = {
+  error: Error & { digest?: string };
+  reset: () => void;
+};
+
+export default function GlobalError({ error, reset }: Props) {
+  useEffect(() => {
+    console.error('Global Error:', error);
+  }, [error]);
+
+  return (
+    <html>
+      <body>
+        <div className="global-error-page">
+          <h2>予期しないエラーが発生しました</h2>
+          <p>申し訳ございません。アプリケーションでエラーが発生しました。</p>
+          <button onClick={reset}>再試行</button>
+        </div>
+      </body>
+    </html>
+  );
+}
+```
+
+## エラー内容の正規化
+
+サーバー側で発生したエラーオブジェクトをそのままクライアントに返すと、Next.jsのセキュリティ機能で汎用的なエラーメッセージに変換されます。そのため、**エラー内容をサーバー側で正規化**し、安全なUI用メッセージに変換してからクライアントに返すことが重要です。
+
+### カスタムエラークラスの実装
+
+カスタムエラークラスを使い、オブジェクトにシリアライズすることでエラー情報を構造化して扱えます。
+
+lib/errors.ts
+
+```ts
+export class ApiError extends Error {
+  public readonly statusCode: number;
+  public readonly code: string;
+
+  constructor(message: string, statusCode: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.statusCode = statusCode;
+    this.code = code || 'UNKNOWN_ERROR';
+  }
+
+  serialize() {
+    return {
+      name: this.name,
+      message: this.toUserMessage(),
+      statusCode: this.statusCode,
+      code: this.code,
+    };
+  }
+
+  private toUserMessage(): string {
+    switch (this.statusCode) {
+      case 400:
+        return '入力内容に誤りがあります。もう一度ご確認ください。';
+      case 401:
+        return 'ログインが必要です。';
+      case 403:
+        return 'アクセス権限がありません。';
+      case 404:
+        return 'お探しの情報が見つかりませんでした。';
+      case 500:
+        return 'サーバーエラーが発生しました。しばらくしてから再度お試しください。';
+      default:
+        return 'エラーが発生しました。';
+    }
+  }
+}
+```
+
+### より詳細なエラー情報を返す場合
+
+UIでエラーの種類によって異なる表示をする場合は、エラーの詳細情報を構造化して返します。
+
+types/result.ts
+
+```ts
+type SuccessResult<T> = {
+  isSuccess: true;
+  data: T;
+};
+
+type ErrorResult = {
+  isSuccess: false;
+  error: {
+    message: string;
+    code: string;
+    statusCode?: number;
+  };
+};
+
+export type Result<S> = SuccessResult<S> | ErrorResult;
+```
+
+app/users/[id]/page.tsx
+
+```tsx
+export default async function UserPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const res = await fetchUser(id);
+
+  if (!res.isSuccess) {
+    if (res.error.statusCode === 404) {
+      return (
+        <div>
+          <p>ユーザーが見つかりません</p>
+          <Link href="/users">ユーザー一覧に戻る</Link>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <h1>エラー</h1>
+        <p>{res.error.message}</p>
+      </div>
+    );
+  }
+
+  const user = res.data;
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>{user.email}</p>
+    </div>
+  );
+}
+```

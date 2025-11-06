@@ -1,0 +1,436 @@
+---
+globs: ["**/*.ts", "**/*.tsx"]
+---
+
+# データ取得
+
+## 基本方針
+
+### 1. Server Componentで直接外部APIをfetch
+
+Server Componentで直接外部APIを `fetch` し、シンプルに実装するのが第一優先です。
+
+Next.js 15では、Server Componentが標準となっており、サーバーでのデータ取得が推奨されています。
+
+### 2. クライアントフェッチはTanStack QueryとRoute Handlerを使用
+
+クライアントフェッチの場合は、TanStack Queryを使用し、必ずRoute Handlerを経由して外部APIを叩きます。
+
+### 3. データフェッチコロケーション
+
+基本的にデータが必要なコンポーネントで直接フェッチをします。
+
+データが必要な場所で直接取得することでコンポーネントの独立性が向上し、その結果再利用性が高まります。また、Props Drillingのデメリットも解消されます。
+
+## ユースケースと実装方法
+
+| # | ユースケース | 概要 | 実装方法 |
+| --- | --- | --- | --- |
+| 1 | 初回レンダリング時（静的・半静的） | 認証不要、ページ初表示で必要なデータを取得 | Server Component + fetch + Data Cache |
+| 2 | 初回レンダリング時（動的・ユーザー依存） | ログインユーザー固有情報、認証必須メニューなど | Server Component + fetch + (Data Cache) |
+| 3 | 初回レンダリング時（クライアント専用データ） | DBで保持しているデータをクライアントのみで利用 | Server Component + fetch + Client Component + use |
+| 4 | ユーザー操作時 | 画面操作によってデータを取得（検索・フィルタ・ソート等） | Client Component + useQuery + Route Handler + fetch |
+| 5 | 初回レンダリング時 + ユーザー操作時 | 初回描画で一覧を取得、以降はユーザー操作で再取得 | Server Component + fetch + prefetchQuery + HydrationBoundary + dehydrate + useQuery |
+| 6 | 依存クエリ | 先行入力に依存して次のデータを取得（都道府県→市区町村や検索サジェストなど） | Client Component + useQuery + Route Handler + fetch |
+| 7 | プリフェッチ | 次に開かれる可能性のあるデータを先読み（リンク先一覧の先読み） | Server Component + Link + prefetch or Client Component + router.prefetch |
+
+## 1. 初回レンダリング時（静的・半静的）
+
+### 概要
+
+認証不要の初期表示データをサーバー側で取得し、Data Cacheに格納して再利用するパターンです。Data Cacheは、fetchレスポンスをサーバー側で永続化し、2回目以降のリクエストではキャッシュから返すため、パフォーマンスが大幅に向上します。
+
+このパターンでは、初期描画時に必要なマスタデータ（カテゴリ一覧、国・都道府県リストなど）や、変更頻度が低いデータ（お知らせ、利用規約など）の取得時に使用します。
+
+### サンプルコード
+
+apis/features.server.ts
+
+```ts
+import type { Feature } from '@/types/feature';
+
+export async function fetchFeatures(): Promise<Feature[]> {
+  const res = await fetch(
+    `${process.env.BASE_URL}/api/features`,
+    {
+      cache: 'force-cache',
+      next: {
+        tags: ['features'],
+      },
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(res.statusText);
+  }
+
+  return await res.json();
+}
+```
+
+## 2. 初回レンダリング時（動的・ユーザー依存）
+
+### 概要
+
+認証やセッションに依存するユーザー固有のデータをサーバーで取得するパターンです。 `cookies()` や `headers()` を使ってユーザー判定を行い、そのユーザーに紐づくデータを初回レンダリング時に取得します。
+
+このパターンでは、ダッシュボードのユーザー統計情報、マイページのプロフィール、ログインユーザー専用のお知らせなど、初期描画時に必要なユーザー固有データの取得時に使用します。
+
+## 3. 初回レンダリング時（クライアント専用データ）
+
+### 概要
+
+初期描画時に必要なデータであり、かつクライアントコンポーネントでのみ使用するデータを取得する場合です。Server Componentでデータを取得し、Promiseのまま渡すことで、Client Componentでも効率的なストリーミングレンダリングを実現できます。
+
+### サンプルコード
+
+app/profile/edit/page.tsx
+
+```tsx
+import { Suspense } from 'react';
+import { fetchUserProfile } from '@/apis/users.server';
+import { ProfileEditForm } from './components/ProfileEditForm';
+
+export default function ProfileEditPage() {
+  const profilePromise = fetchUserProfile();
+
+  return (
+    <div>
+      <h1>プロフィール編集</h1>
+      <Suspense fallback={<p>プロフィールを読み込み中...</p>}>
+        <ProfileEditForm profilePromise={profilePromise} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+app/profile/edit/components/ProfileEditForm.tsx
+
+```tsx
+'use client';
+
+import { use } from 'react';
+import type { Result } from '@/types/result';
+import type { UserProfile } from '@/types/user';
+
+type Props = {
+  profilePromise: Promise<Result<UserProfile>>;
+};
+
+export function ProfileEditForm({ profilePromise }: Props) {
+  const result = use(profilePromise);
+
+  if (!result.isSuccess) {
+    return <p>プロフィールの取得に失敗しました</p>;
+  }
+
+  const { data: profile } = result;
+
+  return (
+    <form>
+      <label>
+        名前:
+        <input type="text" defaultValue={profile.name} />
+      </label>
+      <label>
+        メール:
+        <input type="email" defaultValue={profile.email} />
+      </label>
+      <button type="submit">保存</button>
+    </form>
+  );
+}
+```
+
+## 4. ユーザー操作時
+
+### 概要
+
+ユーザーの操作をトリガーとしてデータを取得する場合です。TanStack QueryとRoute Handlerを組み合わせることで、クライアント側のキャッシュ管理を効率的に行いながら、データ取得を実現します。
+
+このパターンでは、検索・フィルタ・ソート・ページネーション・モーダル開閉など、ユーザーのインタラクションに応じてデータを取得する際に使用します。
+
+### サンプルコード
+
+app/tasks/_components/TaskTable.tsx
+
+```tsx
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { fetchTasks } from '@/apis/tasks.client';
+
+export function TaskTable() {
+  const [sortKey, setSortKey] = useState<'createdAt' | 'priority'>('createdAt');
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['tasks', sortKey],
+    queryFn: () => fetchTasks(sortKey),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading) return <p>読み込み中...</p>;
+  if (error) return <p>エラーが発生しました</p>;
+
+  return (
+    <div>
+      <div>
+        <button onClick={() => setSortKey('createdAt')}>作成日順</button>
+        <button onClick={() => setSortKey('priority')}>優先度順</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>タイトル</th>
+            <th>優先度</th>
+            <th>作成日</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data?.map((task) => (
+            <tr key={task.id}>
+              <td>{task.title}</td>
+              <td>{task.priority}</td>
+              <td>{task.createdAt}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+```
+
+apis/tasks.client.ts
+
+```ts
+import type { Task } from '@/types/task';
+
+export async function fetchTasks(sortKey: 'createdAt' | 'priority'): Promise<Task[]> {
+  const res = await fetch(`/api/tasks?sort=${sortKey}`);
+
+  if (!res.ok) {
+    throw new Error('Failed to fetch tasks');
+  }
+
+  return await res.json();
+}
+```
+
+app/api/tasks/route.ts
+
+```ts
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchTasksFromExternalAPI } from '@/lib/externalApi';
+
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const sortKey = searchParams.get('sort') || 'createdAt';
+
+  const tasks = await fetchTasksFromExternalAPI(sortKey);
+
+  return NextResponse.json(tasks);
+}
+```
+
+## 5. 初回レンダリング時 + ユーザー操作時（ハイブリッド）
+
+### 概要
+
+初回レンダリング時はServer Componentでサーバーフェッチを行い、レンダリング後のユーザー操作でのデータフェッチは、Client ComponentでTanStack Queryを使用し再取得する、ハイブリッドなデータ取得パターンです。
+
+### サンプルコード
+
+app/search/page.tsx
+
+```tsx
+import { Suspense } from 'react';
+import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
+import { getQueryClient } from '@/lib/queryClient';
+import { fetchSearchResults } from '@/apis/search.server';
+import { SearchResults } from './components/SearchResults';
+
+type Props = {
+  searchParams: Promise<{[key: string]: string}>
+}
+
+export default async function SearchPage({ searchParams }: Props) {
+  const queryClient = getQueryClient();
+  const params = await searchParams;
+  const searchConditions = convertSearchConditions(params);
+
+  await queryClient.prefetchQuery({
+    queryKey: ['search', searchConditions],
+    queryFn: () => fetchSearchResults(searchConditions),
+  });
+
+  const dehydratedState = dehydrate(queryClient);
+
+  return (
+    <div>
+      <h1>検索</h1>
+      <HydrationBoundary state={dehydratedState}>
+        <SearchResults />
+      </HydrationBoundary>
+    </div>
+  );
+}
+```
+
+app/search/components/SearchResults.tsx
+
+```tsx
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { fetchSearchResultsClient } from '@/apis/search.client';
+import { useSearchConditions } from '@/hooks/useSearchConditions';
+
+export function SearchResults() {
+  const [query, setQuery] = useState('');
+  const searchConditions = useSearchConditions();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['search', searchConditions],
+    queryFn: () => fetchSearchResultsClient(query),
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false
+  });
+
+  return (
+    <div>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="検索キーワード"
+      />
+      {isLoading ? (
+        <p>検索中...</p>
+      ) : (
+        <ul>
+          {data?.map((result) => (
+            <li key={result.id}>{result.title}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+## 6. 依存クエリ／タイプアヘッド／インクリメンタル検索
+
+### 概要
+
+あるデータの選択や入力に依存して、次のデータを取得する場合です。TanStack Queryの `enabled` オプションを活用することで、依存する値が存在する場合のみクエリを実行できます。
+
+### サンプルコード
+
+app/address/components/AddressForm.tsx
+
+```tsx
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { fetchPrefectures, fetchCities } from '@/apis/address.client';
+
+export function AddressForm() {
+  const [selectedPrefecture, setSelectedPrefecture] = useState('');
+
+  const { data: prefectures } = useQuery({
+    queryKey: ['prefectures'],
+    queryFn: fetchPrefectures,
+  });
+
+  const { data: cities, isLoading: isCitiesLoading } = useQuery({
+    queryKey: ['cities', selectedPrefecture],
+    queryFn: () => fetchCities(selectedPrefecture),
+    enabled: !!selectedPrefecture,
+  });
+
+  return (
+    <div>
+      <label>
+        都道府県:
+        <select
+          value={selectedPrefecture}
+          onChange={(e) => setSelectedPrefecture(e.target.value)}
+        >
+          <option value="">選択してください</option>
+          {prefectures?.map((pref) => (
+            <option key={pref.id} value={pref.id}>
+              {pref.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {selectedPrefecture && (
+        <label>
+          市区町村:
+          <select disabled={isCitiesLoading}>
+            <option value="">選択してください</option>
+            {cities?.map((city) => (
+              <option key={city.id} value={city.id}>
+                {city.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </div>
+  );
+}
+```
+
+## 7. プリフェッチ
+
+### 概要
+
+ユーザーが次に遷移する可能性の高いページのルートとデータを事前に読み込む（プリフェッチする）ことで、ページ遷移時の体感速度を向上させる手法です。
+
+ただし、一覧画面のように多数のリンクがある場合、すべてをプリフェッチするとN+1問題のように無駄なリクエストが大量に発生してしまいます。プリフェッチの有効化は慎重に判断する必要があります。
+
+### 実装方法
+
+#### 1. Linkコンポーネントのprefetchプロパティ
+
+Server ComponentまたはClient ComponentでLinkコンポーネントを使用し、 `prefetch` プロパティで制御します。
+
+#### 2. router.prefetch()メソッド
+
+Client Componentで `useRouter` フックを使用し、自由なタイミングでプリフェッチを制御します。
+
+### サンプルコード
+
+app/dashboard/page.tsx
+
+```tsx
+import Link from 'next/link';
+import { fetchDashboardStats } from '@/apis/dashboard.server';
+
+export default async function DashboardPage() {
+  const result = await fetchDashboardStats();
+
+  if (!result.isSuccess) {
+    return <p>ダッシュボードの読み込みに失敗しました</p>;
+  }
+
+  return (
+    <div>
+      <h1>ダッシュボード</h1>
+      <p>売上: {result.data.sales}</p>
+      <p>ユーザー数: {result.data.users}</p>
+
+      <Link href="/settings" prefetch={true}>
+        設定画面へ
+      </Link>
+    </div>
+  );
+}
+```

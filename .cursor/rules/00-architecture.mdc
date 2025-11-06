@@ -1,0 +1,183 @@
+---
+alwaysApply: true
+---
+# アーキテクチャとディレクトリ構成
+
+## 基本方針
+
+### App Routerの思想に沿った実装
+
+Next.js 15では、App Routerが推奨されています。App Routerの思想を理解し、それに沿った実装を心がけることで、フレームワークが提供する機能を最大限に活用できます。
+
+また、思想に合わせることで今後のアップデートによる手戻りも最小限にできると考えています。
+
+### 型定義は type で統一
+
+型定義は `interface` ではなく `type` で統一します。
+
+## ディレクトリ構成
+
+Next.jsのファイルベースルーティングとコロケーションパターンに準拠したディレクトリ構成を採用します。
+
+```
+src/
+├─ app/                          // 画面・機能単位
+│  ├─ (private)/                 // ログイン必須
+│  │  ├─ actions/                // 固有Server Actions
+│  │  ├─ apis/                   // 固有APIクライアント
+│  │  ├─ components/             // 固有コンポーネント
+│  │  ├─ constants/              // 固有定数
+│  │  ├─ hooks/                  // 固有カスタムフック
+│  │  ├─ stores/                 // 固有ストア
+│  │  ├─ providers/              // 固有プロバイダー
+│  │  ├─ schemas/                // 固有スキーマ
+│  │  ├─ types/                  // 固有型定義
+│  │  ├─ utils/                  // 固有ユーティリティ関数
+│  │  └─ layout.tsx              // private用レイアウト
+│  │
+│  ├─ (public)/                  // ログイン任意
+│  │  └─ layout.tsx              // public用レイアウト
+│  │
+│  └─ api/                       // Route Handlers（クライアントフェッチのBFF用）
+│
+├─ actions/                      // 汎用Server Actions
+├─ apis/                         // 汎用APIクライアント
+├─ components/                   // 汎用コンポーネント
+├─ constants/                    // 汎用定数
+├─ hooks/                        // 汎用カスタムフック
+├─ stores/                       // グローバルストア
+├─ providers/                    // 汎用プロバイダー
+├─ lib/                          // ライブラリ関連
+├─ schemas/                      // 汎用スキーマ
+├─ types/                        // 汎用型定義
+└─ utils/                        // ユーティリティ関数
+```
+
+## 設計原則
+
+### 1. Featureベースの構成（コロケーション）
+
+Next.jsのファイルベースルーティングとコロケーションパターンに準拠し、画面・機能固有のファイルは、対応する `page.tsx` と同階層のディレクトリに配置し、複数箇所で使用するファイルは、 `app` と同階層のディレクトリ内に配置します。
+
+関連するコードを近くに配置することで、「このファイルがどこで使われているか」が明確になり、不要なファイルの削除や影響範囲の把握が容易になります。結果、保守性と可読性向上に繋がります。
+
+### 2. プライベートフォルダの活用
+
+画面ではないが機能として独立しているものは、プライベートフォルダ（ `_xxxxx` ）を使用します。プライベートフォルダはルーティングの対象外となるため、機能の整理に有用です。
+
+### 3. ルートグループによる認証の分離
+
+ルートグループは、ディレクトリ名をURLのパスに含ませずディレクトリをグルーピングするための機能です。
+
+`(private)` と `(public)` のルートグループを使用し、認証の有無でディレクトリを分割します。これにより、認証状態に応じたレイアウトやヘッダーの適用が明確になります。
+
+また、認証が必要ない画面は静的レンダリングになることが多いので、Full Route Cache（≒SSG）を確実に適用させるためにも、分けておいた方が良いと考えています。
+
+## 重要なルール
+
+### ルートレイアウトの制約
+
+ルートレイアウト（ `app/layout.tsx` ）は必ずサーバーコンポーネントにし、直接動的API（ `cookies()` 、 `headers()` など）を使用することは禁止とします。
+
+**理由1: Full Route Cacheの対象外になる**
+
+ルートレイアウトで動的APIを使用すると、全画面が動的レンダリング（≒SSR）になるため、Full Route Cache（≒SSG）が使えなくなります。静的に生成できるページまで動的レンダリングになることで、パフォーマンスが低下します。
+
+**理由2: PPRの恩恵が受けられなくなる**
+
+現在実験版のPPR（Partial Prerendering）の機能である、ルート内での静的レンダリング（≒SSG）と動的レンダリング（≒SSR）の併用による最適化の恩恵が受けられなくなります。
+
+### APIクライアントの配置ルール
+
+`apis` 直下のファイルは、リソース単位で配置し、サーバー用かクライアント用（GETのみ）かによってドット記法を使用します。
+
+```
+apis/
+├─ users.server.ts   // サーバー用APIクライアント
+└─ users.client.ts   // クライアント用APIクライアント（GETのみ）
+```
+
+#### サーバー用とクライアント用を分ける理由
+
+**1. セキュリティの観点**
+
+サーバー用のAPIクライアントでは、アクセストークン付与などの機密情報を扱う処理を直接行います。一方、クライアント用のAPIクライアントは、Route Handlerのエンドポイントを叩くため、機密情報を扱う処理をAPIクライアントに記載しません。
+
+また、登録や更新は必ずServer Actionsで実行するため、クライアント用のAPIクライアントではGETのみを定義します。
+
+**2. エラー時のレスポンスの違い**
+
+サーバーフェッチのエラー時はResult型でレスポンスします。一方、クライアントフェッチでのエラーは、 `useQuery` の戻り値の `error` に委任するため、エラーをthrowする必要があります。
+
+#### サンプルコード
+
+**サーバー用のAPIクライアント**
+
+apis/users.server.ts
+
+```ts
+import { request } from '@/lib/request';
+import type { Result } from '@/types/result';
+import type { User } from '@/types/user';
+
+export async function fetchUser(userId: string): Promise<Result<User>> {
+  return await request<User>(`/api/users/${userId}`);
+}
+```
+
+**クライアント用のAPIクライアント**
+
+apis/users.client.ts
+
+```ts
+import type { User } from '@/types/user';
+
+export async function fetchUser(userId: string): Promise<User> {
+  const res = await fetch(`/api/users/${userId}`);
+
+  if (!res.ok) {
+    throw new Error('Failed to fetch user');
+  }
+
+  return await res.json();
+}
+```
+
+### Server Actionsとの連携
+
+`actions` 直下のServer Actions関数では、直接 `fetch` 処理は書かず、 `apis` 直下のAPIクライアントをimportして使用します。
+
+これにより、API通信とServer Actionsでのロジックを分離し、保守性を高めます。
+
+actions/users.ts
+
+```ts
+'use server';
+
+import { updateUser } from '@/apis/users.server';
+import { revalidateTag } from 'next/cache';
+import type { Result } from '@/types/result';
+import type { User } from '@/types/user';
+
+export async function updateUserAction(userId: string): Promise<Result<User>> {
+  const result = await updateUser(userId);
+
+  if(result.isSuccess) {
+    revalidateTag(`users-${userId}`);
+  }
+
+  return result;
+}
+```
+
+## ファイル・ディレクトリの命名規則
+
+| 対象 | 命名規則 | 例 |
+| --- | --- | --- |
+| `app` 配下のルーティングになるディレクトリ | ケバブケース | `user-profile/`, `search-results/` |
+| コンポーネントのファイル | アッパーキャメルケース | `UserProfile.tsx`, `SearchForm.tsx` |
+| その他のディレクトリ・ファイル | キャメルケース | `fetchUser.ts`, `userSchema.ts` |
+
+`app` 配下のルーティングになるものは、Google検索におけるURL構造のベストプラクティスに沿ってケバブケースにします。
+
+また、ファイル名はJavaScriptの慣習に沿ってキャメルケースにし、コンポーネントはReactのルールに沿ってアッパーキャメルケースとします。

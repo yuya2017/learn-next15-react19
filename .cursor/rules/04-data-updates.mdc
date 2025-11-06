@@ -1,0 +1,415 @@
+---
+globs: ["**/*.ts", "**/*.tsx"]
+---
+
+# データ更新
+
+## 基本方針
+
+### 1. Next/Reactの標準機能を優先
+
+Data Cache + Server Actions + revalidateTagやuseOptimisticなど、Next.js / Reactの標準機能を使ってシンプルに実装することが第一優先です。
+
+### 2. 複雑な要件はTanStack Queryに委任
+
+クライアントフェッチ（useQuery）で取得したデータの更新や、複雑な要件の場合はTanStack Queryを使用します。
+
+### 3. 更新はServer Actionsを経由
+
+登録・更新系は必ずServer Actionsを経由して外部APIを叩きます。
+
+### 4. Server Actionsは基本1つに集約
+
+一連の処理でServer Actionsは複数使わず、基本1つのServer Actionsに処理をまとめます。Server Actionsは直列実行される制約があるため、複数のServer Actionsを呼び出すと、待ち時間が増加しユーザー体験悪化の原因になります。
+
+### 5. 最終整合はDB側に統一
+
+楽観的更新やキャッシュの合成は、UXのための一時表現と捉え、最終的な整合性はDB側に合わせます。
+
+## ユースケースと実装方法
+
+| # | ユースケース | 概要 | 実装方法 |
+| --- | --- | --- | --- |
+| 1 | 通常の更新 | シンプルなCRUD操作 | Client Component + Server Actions + revalidateTag |
+| 2 | 楽観的更新（サーバーフェッチ + 単一画面） | 即時UI反映、裏側でDB更新、失敗時ロールバック | Client Component + startTransition + useOptimistic + Server Actions + revalidateTag |
+| 3 | 楽観的更新（サーバーフェッチ + 複数画面） | 複数画面・箇所にまたがる即時反映 | Client Component + startTransition + useOptimistic + Server Actions + revalidateTag |
+| 4 | 楽観的更新（クライアントフェッチ） | 更新するデータをクライアントフェッチしている即時UI反映 | Client Component + useMutation + onMutate + mutationFn + Server Actions + invalidateQueries |
+| 5 | 楽観的更新（複雑要件） | 再取得のタイミングやキャッシュ管理が複雑な要件 | Client Component + useQuery + useMutation + onMutate + mutationFn + Server Actions + onSettled |
+| 6 | デバウンス更新（オートセーブ） | 入力中に一定時間経過後に更新 | Client Component + useState + useMutation + mutationFn + Server Actions |
+
+## 1. 通常の更新
+
+### 概要
+
+登録・編集・削除などの標準的な同期型CRUD操作を行うパターンです。Server Actionsを使ってサーバー側でデータ更新を実行し、成功後に `revalidateTag` で関連するData Cacheを再検証することで、画面表示とデータベースの状態を自動的に整合させます。
+
+**Next.js 15では、このパターンがデータ更新の基本戦略です。**
+
+### サンプルコード
+
+app/profile/edit/components/ProfileForm.tsx
+
+```tsx
+'use client';
+
+import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { updateUserProfileAction } from '@/actions/profile';
+import type { UserProfile } from '@/types/user';
+
+type Props = {
+  profile: UserProfile;
+};
+
+export function ProfileForm({ profile }: Props) {
+  const [name, setName] = useState(profile.name);
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleSubmit = () => {
+    startTransition(async () => {
+      const result = await updateUserProfileAction({ name });
+
+      if (result.isSuccess) {
+        router.push('/profile');
+      } else {
+        alert(result.errorMessage);
+      }
+    });
+  };
+
+  return (
+    <div>
+      <label>
+        名前:
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </label>
+      <button onClick={handleSubmit} disabled={isPending}>
+        {isPending ? '更新中...' : '更新'}
+      </button>
+    </div>
+  );
+}
+```
+
+actions/profile.ts
+
+```ts
+'use server';
+
+import { updateUserProfile } from '@/apis/users.server';
+import { revalidateTag } from 'next/cache';
+import type { Result } from '@/types/result';
+
+export async function updateUserProfileAction(data: { name: string }): Promise<Result<void>> {
+  const result = await updateUserProfile(data);
+
+  if (result.isSuccess) {
+    revalidateTag(`user-${userId}`);
+  }
+
+  return result;
+}
+```
+
+## 2. 楽観的更新（サーバーフェッチ + 単一画面）
+
+### 概要
+
+データベースの更新完了を待たずに、ユーザーのアクション直後に即座にUIへ変更を反映する楽観的更新のパターンです。React 19の `useOptimistic` フックを使ってUI状態を先行して更新し、バックグラウンドでServer Actionsによるデータベース更新を実行します。
+
+### サンプルコード
+
+app/posts/[id]/components/LikeButton.tsx
+
+```tsx
+'use client';
+
+import { useOptimistic, useTransition } from 'react';
+import { toggleLike } from '@/actions/posts';
+
+type Props = {
+  postId: string;
+  initialLiked: boolean;
+  initialCount: number;
+};
+
+export function LikeButton({ postId, initialLiked, initialCount }: Props) {
+  const [isPending, startTransition] = useTransition();
+
+  const [optimisticState, setOptimisticState] = useOptimistic(
+    { liked: initialLiked, count: initialCount },
+    (state, newLiked: boolean) => ({
+      liked: newLiked,
+      count: newLiked ? state.count + 1 : state.count - 1,
+    })
+  );
+
+  const handleClick = () => {
+    const newLiked = !optimisticState.liked;
+
+    startTransition(async () => {
+      setOptimisticState(newLiked);
+
+      const result = await toggleLike(postId, newLiked);
+
+      if (!result.isSuccess) {
+        alert(result.errorMessage);
+      }
+    });
+  };
+
+  return (
+    <button onClick={handleClick} disabled={isPending}>
+      {optimisticState.liked ? '❤️' : '🤍'} {optimisticState.count}
+    </button>
+  );
+}
+```
+
+actions/posts.ts
+
+```ts
+'use server';
+
+import { toggleLikeAPI } from '@/apis/posts.server';
+import { revalidateTag } from 'next/cache';
+import type { Result } from '@/types/result';
+
+export async function toggleLike(
+  postId: string,
+  liked: boolean
+): Promise<Result<void>> {
+  const result = await toggleLikeAPI(postId, liked);
+
+  if (result.isSuccess) {
+    revalidateTag(`post-${postId}`);
+  }
+
+  return result;
+}
+```
+
+## 3. 楽観的更新（サーバーフェッチ + 複数画面）
+
+### 概要
+
+同一のデータが複数の画面や複数箇所で表示されている場合の楽観的更新パターンです。更新をトリガーした箇所は `useOptimistic` で即座にUIに反映し、それ以外の箇所は `revalidateTag` によるData Cacheの再検証で自動的に最新データが反映されます。
+
+### サンプルコード
+
+app/tasks/_components/TaskStatusToggle.tsx
+
+```tsx
+'use client';
+
+import { useOptimistic, useTransition } from 'react';
+import { updateTaskStatus } from '@/actions/tasks';
+import type { Task } from '@/types/task';
+
+type Props = {
+  task: Task;
+};
+
+export function TaskStatusToggle({ task }: Props) {
+  const [isPending, startTransition] = useTransition();
+
+  const [optimisticTask, setOptimisticTask] = useOptimistic(
+    task,
+    (currentTask, newStatus: Task['status']) => ({
+      ...currentTask,
+      status: newStatus,
+    })
+  );
+
+  const handleToggle = () => {
+    const newStatus = optimisticTask.status === 'completed' ? 'pending' : 'completed';
+
+    startTransition(async () => {
+      setOptimisticTask(newStatus);
+
+      const result = await updateTaskStatus(task.id, newStatus);
+
+      if (!result.isSuccess) {
+        alert(result.errorMessage);
+      }
+    });
+  };
+
+  return (
+    <button onClick={handleToggle} disabled={isPending}>
+      {optimisticTask.status === 'completed' ? '✅ 完了' : '⏳ 未完了'}
+    </button>
+  );
+}
+```
+
+actions/tasks.ts
+
+```ts
+'use server';
+
+import { updateTaskStatusAPI } from '@/apis/tasks.server';
+import { revalidateTag } from 'next/cache';
+import type { Result } from '@/types/result';
+import type { Task } from '@/types/task';
+
+export async function updateTaskStatus(
+  taskId: string,
+  status: Task['status']
+): Promise<Result<void>> {
+  const result = await updateTaskStatusAPI(taskId, status);
+
+  if (result.isSuccess) {
+    revalidateTag('tasks');
+  }
+
+  return result;
+}
+```
+
+## 4. 楽観的更新（クライアントフェッチ）
+
+### 概要
+
+TanStack Queryの `useQuery` でクライアントフェッチしたデータを楽観的に更新するパターンです。 `useMutation` の `onMutate` でキャッシュを即座に書き換えてUIに反映し、 `mutationFn` でServer Actionsを実行してデータベースを更新します。
+
+### サンプルコード
+
+app/users/_components/UserStatusToggle.tsx
+
+```tsx
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchUser } from '@/apis/users.client';
+import { updateUserStatus } from '@/actions/users';
+import type { User } from '@/types/user';
+
+type Props = {
+  userId: string;
+};
+
+export function UserStatusToggle({ userId }: Props) {
+  const queryClient = useQueryClient();
+
+  const { data: user } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => fetchUser(userId),
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (newStatus: User['status']) => {
+      const result = await updateUserStatus(userId, newStatus);
+      if (!result.isSuccess) {
+        throw new Error(result.errorMessage);
+      }
+    },
+    onMutate: async (newStatus) => {
+      await queryClient.cancelQueries({ queryKey: ['user', userId] });
+
+      const previousUser = queryClient.getQueryData<User>(['user', userId]);
+
+      queryClient.setQueryData<User>(['user', userId], (old) => {
+        if (!old) return old;
+        return { ...old, status: newStatus };
+      });
+
+      return { previousUser };
+    },
+    onError: (err, newStatus, context) => {
+      if (context?.previousUser) {
+        queryClient.setQueryData(['user', userId], context.previousUser);
+      }
+      alert('更新に失敗しました');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', userId] });
+    },
+  });
+
+  if (!user) return null;
+
+  return (
+    <button
+      onClick={() => {
+        const newStatus = user.status === 'active' ? 'inactive' : 'active';
+        mutation.mutate(newStatus);
+      }}
+      disabled={mutation.isPending}
+    >
+      {user.status === 'active' ? '🟢 アクティブ' : '⚫ 非アクティブ'}
+    </button>
+  );
+}
+```
+
+## 5. 楽観的更新（複雑要件）
+
+### 概要
+
+データ更新後の再取得タイミングを細かく制御したい場合や、複数のqueryKeyにまたがるキャッシュ管理が必要な複雑な要件に対応するパターンです。
+
+TanStack Queryの `useQuery` オプション、 `useMutation` 、 `invalidateQueries` 、 `removeQueries` などを組み合わせることで、柔軟な制御が可能になります。
+
+## 6. デバウンス更新（オートセーブ）
+
+### 概要
+
+ユーザーの入力ごとに保存処理を実行するのではなく、一定時間入力が止まったタイミングでのみ保存を実行するデバウンス（遅延実行）パターンです。
+
+テキスト入力のデバウンス更新では、保存失敗時にロールバックせずローカル状態（ `useState` の値）を保持し続けることが非常に重要です。
+
+### サンプルコード
+
+app/notes/components/NoteEditor.tsx
+
+```tsx
+'use client';
+
+import { useMutation } from '@tanstack/react-query';
+import { useState } from 'react';
+import { updateNote } from '@/actions/notes';
+
+type Props = {
+  noteId: string;
+  initialContent: string;
+};
+
+export function NoteEditor({ noteId, initialContent }: Props) {
+  const [content, setContent] = useState(initialContent);
+
+  const mutation = useMutation({
+    mutationFn: async (newContent: string) => {
+      const result = await updateNote(noteId, newContent);
+      if (!result.isSuccess) {
+        throw new Error(result.errorMessage);
+      }
+    },
+    onSuccess: () => {
+      console.log('自動保存しました');
+    },
+    onError: () => {
+      alert('自動保存に失敗しました。もう一度お試しください。');
+    },
+  });
+
+  return (
+    <div>
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="ノートを入力..."
+        rows={10}
+        style={{ width: '100%' }}
+      />
+      {mutation.isPending && <p>保存中...</p>}
+      {mutation.isSuccess && <p>✅ 保存しました</p>}
+    </div>
+  );
+}
+```

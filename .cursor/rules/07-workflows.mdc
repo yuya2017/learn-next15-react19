@@ -1,0 +1,40 @@
+---
+description: SDD の進め方 (Specify → Plan → Tasks → Implement → Knowledge)
+globs: ["specs/**/*.md"]
+alwaysApply: false
+---
+# 手順
+
+1. `/specify` で仕様定義を行い `specs/<ticket>/spec.md` へ保存
+2. `/plan` で技術計画を策定し `plan.md` に保存
+3. `/tasks` でタスク分解し、DoD を付与
+4. `/implement` でタスク ID ごとに実装。差分とテスト結果をまとめる
+5. `/knowledge` で得られた学びを `docs/knowledge/` に記録
+
+# ポイント
+
+- フェーズ 1-3 は必ずユーザーの確認を取ってから次へ進む
+- テンプレートは `specs/_templates/` を利用し、必要に応じて調整
+- 実装中に仕様変更が発生した場合は `spec.md` を更新して履歴を残す
+
+# Development Workflow
+
+## 標準フロー (SDD ベース)
+
+1. **Phase 1: Specify** – `/specify` コマンドを使ってユーザーストーリーと受け入れ基準を明文化する  
+   - 成果物: `specs/<ticket-id>/spec.md`
+2. **Phase 2: Plan** – `/plan` で技術的な分解、依存関係、デザイン方針を整理  
+   - 成果物: `specs/<ticket-id>/plan.md`
+3. **Phase 3: Tasks** – `/tasks` で DoD を付与したタスク一覧を作成  
+   - 成果物: `specs/<ticket-id>/tasks.md`
+4. **Phase 4: Implement** – タスクごとにブランチを切り、実装 → テスト → PR  
+   - 成果物: コードと `docs/` 差分、PR 説明
+5. **Phase 5: Knowledge** – `/knowledge` で学びを `docs/knowledge` に追加し、再利用可能な形にする  
+   - 成果物: `docs/knowledge/<yyyy-mm-dd>-<topic>.md`
+
+## レビュー観点
+
+1. 仕様: `/specify` の受け入れ基準を満たしているか
+2. 実装: Next.js 15 / React 19 のベストプラクティスに沿っているか
+3. テスト: lint/build に加え、影響範囲に応じたテストの有無
+4. ナレッジ: 再発防止のための知見が `docs/knowledge` に追加されているか

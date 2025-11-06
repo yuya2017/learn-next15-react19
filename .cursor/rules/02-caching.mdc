@@ -1,0 +1,264 @@
+---
+globs: ["**/*.ts", "**/*.tsx"]
+---
+
+# キャッシュ戦略
+
+## 基本方針
+
+### 可能な限りキャッシュを使用し、必要な時のみ再取得や再レンダリングを行う
+
+Next.js 15から、Data CacheやRouter Cacheがデフォルトでオフになり、キャッシュはオプトイン（明示的な有効化が必要）という立ち位置になりました。
+
+しかし、可能な限りキャッシュは活用し、必要な場合のみ再取得や再レンダリングを行うことで、より良いユーザー体験を提供できます。
+
+ただし、キャッシュの制御を誤ると、「古いデータが表示される」「UIとDBの状態が不整合になる」といった問題が発生しやすいため、最適化は慎重に行う必要があります。
+
+## キャッシュレイヤーの整理
+
+Next.js 15では、複数のキャッシュレイヤーが協調して動作します。それぞれの役割と特性を理解することで、適切なキャッシュ戦略を設計できます。
+
+| キャッシュ名 | 場所 | 目的 | 期間 | 制御方法 |
+| --- | --- | --- | --- | --- |
+| Request Memoization | サーバー | 同一レンダー内の重複fetch排除 | レンダー中のみ | 自動（制御不可） |
+| Data Cache | サーバー | サーバーフェッチの結果をキャッシュ | 永続的（再検証まで） | `next.revalidate` 、 `revalidateTag` |
+| Full Route Cache | サーバー | レンダリング結果をキャッシュ（≒SSG） | 永続的（再デプロイまで） | 動的API使用の有無、 `revalidatePath` |
+| Router Cache | クライアント | ページ遷移時のキャッシュ | セッション中 | next.configの `staleTimes` で設定 |
+| TanStack Query Cache | クライアント | クライアントフェッチの結果をキャッシュ | 設定による | `staleTime` 、 `gcTime` 、 `invalidateQueries` |
+
+## Full Route Cacheのルール
+
+Full Route Cacheは、ビルド時にページのレンダリング結果をキャッシュし、リクエストごとの再レンダリングを不要にする仕組みです（従来のSSGに相当します）。
+
+### ルートグループで静的・動的を分離する
+
+ルートグループを使って静的ページと動的ページのディレクトリを分離し、それぞれに専用の `layout.tsx` を配置します。
+
+#### OK例: ルートグループで分離
+
+app/layout.tsx
+
+```tsx
+// ✅ Good: 動的APIを使用しない
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html>
+      <body>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+app/(static)/layout.tsx
+
+```tsx
+// ✅ Good: 動的APIを使用しない
+export default function PublicLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <header>Public Header</header>
+      {children}
+    </div>
+  );
+}
+```
+
+app/(dynamic)/layout.tsx
+
+```tsx
+import { cookies } from 'next/headers';
+
+// ✅ Good: このルートグループ内のみ動的レンダリング
+export default async function PrivateLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token');
+
+  return (
+    <div>
+      <header>Private Header (User: {token?.value})</header>
+      {children}
+    </div>
+  );
+}
+```
+
+#### NG例: ルートのlayout.tsxで動的API使用
+
+```tsx
+import { cookies } from 'next/headers';
+
+// ❌ Bad: 全画面が動的レンダリングになる
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token');
+
+  return (
+    <html>
+      <body>
+        <header>User: {token?.value}</header>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+## Router Cacheのルール
+
+Router Cacheは、クライアント側でページ遷移時のキャッシュを管理する仕組みです。Next.js 15では、ページセグメントのデフォルト `staleTime` が0秒になり、ページ遷移時に常に最新データが反映されるようになりました。
+
+### Router Cacheは使用しない
+
+現状、Router Cacheは `next.config.ts` でプロジェクト全体に対する設定しかできません。アプリケーションには、静的なコンテンツページもあれば、リアルタイム性が求められるダッシュボードのようなページも混在します。
+
+## Data Cacheのルール
+
+Data Cacheは、サーバー側でfetchリクエストの結果をキャッシュする仕組みです。Next.js 15からはデフォルトで無効になりましたが、基本的な方針として、サーバーコンポーネントでのデータフェッチには、Data Cacheを積極的に使用します。
+
+### 1. 要件や仕様が明確ではない場合は一旦オフ
+
+開発初期段階や、要件・仕様が確定していない段階では、Data Cacheをオフのまま運用し、後から最適化するアプローチを推奨します。
+
+### 2. 他のユーザーが更新する可能性のあるデータはオフ
+
+複数ユーザーが共有するデータ（例：SNSの投稿、チャットメッセージなど）では、Data Cacheを使用しません。
+
+### 3. revalidatePathは使わずrevalidateTagを使用
+
+Data Cacheを再検証する際は、 `revalidatePath` ではなく `revalidateTag` を使用します。そのため、すべてのfetch関数には必ず `next.tags` を付与するルールとします。
+
+`revalidatePath` は、指定したルート全体のキャッシュを一括削除します。つまり、更新する必要のないData Cacheまで削除してしまい、無駄なAPIリクエストが発生します。
+
+一方、 `revalidateTag` は、タグを指定して必要な部分だけを再検証できます。
+
+### サンプルコード
+
+apis/posts.server.ts
+
+```ts
+import { request } from '@/lib/request';
+import type { Result } from '@/types/result';
+import type { Post } from '@/types/post';
+
+export async function fetchPosts(): Promise<Result<Post[]>> {
+  return await request<Post[]>('/api/posts', {
+    next: {
+      tags: ['posts'],
+      revalidate: 3600,
+    },
+  });
+}
+
+export async function fetchPost(id: string): Promise<Result<Post>> {
+  return await request<Post>(`/api/posts/${id}`, {
+    next: {
+      tags: [`post-${id}`],
+    },
+  });
+}
+```
+
+actions/posts.ts
+
+```ts
+'use server';
+
+import { createPostAPI } from '@/apis/posts.server';
+import { revalidateTag } from 'next/cache';
+import type { Result } from '@/types/result';
+
+export async function createPost(data: { title: string }): Promise<Result<void>> {
+  const result = await createPostAPI(data);
+
+  if (result.isSuccess) {
+    revalidateTag('posts');
+  }
+
+  return result;
+}
+```
+
+## Request Memoizationのルール
+
+Request Memoizationは、同一レンダー内で同じfetchリクエストが重複している場合、自動的に結果を再利用する仕組みです。
+
+Request Memoizationはデフォルトで適用され、制御する手段がありません。そのため、特別な設定をせず、そのまま使用します。
+
+## クライアントキャッシュのルール（TanStack Query）
+
+クライアント側でのデータフェッチには、TanStack Query（React Query）のキャッシュ機構を使用します。
+
+### 1. Data Cacheとの併用は避ける
+
+TanStack QueryとNext.jsのfetchを併用する場合（Server ComponentsでのprefetchやRoute Handlerなど）は、Data Cacheをオフにします。
+
+理由は、2つのキャッシュレイヤーを同時に使用すると、キャッシュの整合性管理が非常に複雑になるためです。
+
+### 2. revalidate時はまずinvalidateQueriesを使用
+
+キャッシュを再検証する際は、基本的に `invalidateQueries` を使用します。これは、シンプルな実装でUIとDBの整合性を担保できるためです。
+
+ただし、必要に応じて `refetchQueries` や `removeQueries` も使い分けます。
+
+### 3. SSR + Hydrationでの二重取得を避ける
+
+Server ComponentsでprefetchしてHydrationする場合、サーバーとクライアントで同じデータを二重に取得しないよう注意が必要です。
+
+具体的には、以下を確認します：
+
+- `queryKey` がサーバーとクライアントで一致しているか
+- `staleTime` や `refetchOnMount` などのオプションが適切に設定されているか
+
+これにより、サーバー側で取得したデータをクライアント側で再利用でき、無駄なネットワークリクエストを削減できます。
+
+## キャッシュ戦略のベストプラクティス
+
+### 1. サーバーフェッチはData Cacheを基本使用
+
+サーバーコンポーネントでのデータフェッチには、積極的にData Cacheを活用します。
+
+- **有効化の基準**: 静的・半静的なデータ、オンデマンド検証が可能なデータ
+- **オフにする基準**: 複数ユーザーが更新する共有データで、リアルタイム性が求められる場合
+
+迷ったら、まずはオフのまま運用し、パフォーマンスのボトルネックが明確になった段階で有効化するのが安全です。
+
+### 2. revalidateTagで細かく再検証
+
+Data Cacheの再検証には、 `revalidateTag` を優先的に使用します。
+
+- すべてのfetch関数に適切なタグを付与する
+- タグ設計を事前に計画し、必要な部分だけを再検証できるようにする
+- `revalidatePath` は、静的ページ全体の更新など、限定的なシナリオでのみ使用
+
+### 3. Full Route Cacheは静的ページで活用
+
+静的コンテンツページでは、Full Route Cacheを有効にしてパフォーマンスを最大化します。
+
+- **ルートグループで分離**: `(static)` と `(dynamic)` のようにディレクトリを分ける
+- **ルートレイアウトで動的API禁止**: 全画面が動的レンダリングになるのを防ぐ
+
+### 4. クライアントフェッチはTanStack Queryで一元管理
+
+クライアント側のデータフェッチとキャッシュは、TanStack Queryで統一します。
+
+- **Data Cacheとの併用は避ける**: キャッシュレイヤーを混在させない
+- **適切なオプション設定**: `staleTime` 、 `gcTime` 、 `refetchOnMount` などを最適化
+- **再検証は `invalidateQueries` を基本**: シンプルで安全な実装を優先

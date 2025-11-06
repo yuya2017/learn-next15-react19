@@ -1,0 +1,359 @@
+---
+alwaysApply: true
+---
+# コンポーネント設計
+
+## 基本方針
+
+### 関心ごと単位での分割
+
+関心ごとが3つ以上共存している場合（取得・更新・検証・整形・描画など）、分割を検討します。
+
+### 分割基準
+
+以下の場合も分割を検討します。
+
+| 分割基準 | 対応方針 |
+| --- | --- |
+| 条件分岐後のUI（HTML）が30行以上 | 条件分岐ごとにコンポーネントを分割 |
+| 同系UIの繰り返し（リスト行やカードなど） | 繰り返し部分をコンポーネント化 |
+| Hook呼び出しが6個以上 | 関連する内容をカスタムフックとして切り出し |
+| 関連ロジックだけで30〜40行以上 | カスタムフックやユーティリティ関数に切り出し |
+| onClickなどのイベントハンドラが5個以上 | カスタムフックやユーティリティ関数に切り出し |
+
+## Server Componentのルール
+
+### page.tsxは同期かつサーバーコンポーネントに
+
+`page.tsx` は同期かつサーバーコンポーネントにし、サスペンドさせません。つまり、基本的に `await` や `use` は使用しません。
+
+ただし、 `await` なしでサーバーフェッチをキックし、子コンポーネントにPromiseのまま渡すのは問題ありません。
+
+app/tasks/page.tsx
+
+```tsx
+import { fetchTasks } from '@/apis/tasks.server';
+import { TaskList } from './components/TaskList';
+
+export default function TasksPage() {
+  const tasksPromise = fetchTasks();
+
+  return (
+    <div>
+      <h1>タスク一覧</h1>
+      <Suspense fallback={<p>Loading...</p>}>
+        <TaskList tasksPromise={tasksPromise} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### ストリーミングとSuspenseの活用
+
+Server Componentでは、ストリーミングを活用してユーザー体験を向上させることが可能です。リソース（API）単位での分割を基本とし、非同期コンポーネントの場合は、必ずSuspenseでラップして上位へサスペンドさせないようにします。
+
+app/dashboard/page.tsx
+
+```tsx
+import { Suspense } from 'react';
+import { UserInfo } from './components/UserInfo';
+import { RecentTasks } from './components/RecentTasks';
+import { Analytics } from './components/Analytics';
+
+export default function DashboardPage() {
+  return (
+    <div>
+      <h1>ダッシュボード</h1>
+
+      <Suspense fallback={<p>ユーザー情報を読み込み中...</p>}>
+        <UserInfo />
+      </Suspense>
+
+      <Suspense fallback={<p>最近のタスクを読み込み中...</p>}>
+        <RecentTasks />
+      </Suspense>
+
+      <Suspense fallback={<p>分析データを読み込み中...</p>}>
+        <Analytics />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### エラーUIの出し分け
+
+Server Componentでのフェッチ結果によるエラーUIの出し分けは、コンポーネント内に記述します。コンポーネント内で部分的にエラーUIを表示することで、ページ全体がエラー画面になることを防ぎます。
+
+app/user/[id]/page.tsx
+
+```tsx
+import { fetchUser } from '@/apis/users.server';
+import { UserProfile } from './components/UserProfile';
+
+type Props = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function UserProfile({ params }: Props) {
+  const { id } = await params;
+  const result = await fetchUser(id);
+
+  if (!result.isSuccess) {
+    return (
+      <div>
+        <h1>エラー</h1>
+        <p>{result.errorMessage}</p>
+      </div>
+    );
+  }
+
+  const userProfile = result.data;
+
+  return <div>ユーザー名：{userProfile.name}</div>;
+}
+```
+
+## Client Componentのルール
+
+### Client Componentは必要最小限に
+
+Client Componentは必要最小限の部分のみに分割し、基本的にServer Componentを使用します。
+
+Client Componentが必要なのは以下のような場合です。
+
+| 条件 | 具体例 |
+| --- | --- |
+| ユーザーインタラクションがある部分 | ボタンのクリックやフォームの入力など |
+| ブラウザAPI使用箇所 | `localStorage` や `window` オブジェクトなど |
+| React Hooksを使用する箇所 | `useState` や `useEffect` など |
+
+### Suspenseでのラップ
+
+`use` や `useSearchParams` 、動的importを利用したClient Componentも、非同期的な挙動になるため、必ずSuspenseでラップして上位へサスペンドさせないようにします。
+
+また、useとSuspenseを組み合わせることで、Client Componentでもストリーミングが可能です。
+
+app/tasks/page.tsx
+
+```tsx
+import { fetchTasks } from '@/apis/tasks.server';
+import { TaskList } from './components/TaskList';
+
+export default function TasksPage() {
+  const tasksPromise = fetchTasks();
+
+  return (
+    <div>
+      <h1>タスク一覧</h1>
+      <Suspense fallback={<p>Loading...</p>}>
+        <TaskList tasksPromise={tasksPromise} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+app/tasks/components/TaskList.tsx
+
+```tsx
+'use client';
+
+import { use } from 'react';
+import { Result } from '@/types/Result';
+
+type Props = {
+  tasksPromise: Promise<Result<Tasks[]>>
+}
+
+export default function TaskList({ tasksPromise }: Props) {
+  const tasks = use(tasksPromise);
+
+  return (
+    // ... rendering
+  );
+}
+```
+
+## その他のルール
+
+### Compositionパターンの活用
+
+Client Component配下にServer Componentをネストさせる場合、直接importせず、Client Componentの `children` でServer Componentを渡すCompositionパターンを使います。
+
+app/dashboard/page.tsx
+
+```tsx
+import { ClientWrapper } from './components/ClientWrapper';
+import { ServerContent } from './components/ServerContent';
+
+export default function Page() {
+  return (
+    <ClientWrapper>
+      <Suspense fallback={<p>読み込み中...</p>}>
+        <ServerContent />
+      </Suspense>
+    </ClientWrapper>
+  );
+}
+```
+
+### loading.tsxの配置
+
+動的APIがあるとその画面全体が動的レンダリング（≒SSR）になるため、部分的にSuspenseしていても `loading.tsx` は必ず配置しておきます。
+
+`loading.tsx` は、ページ全体のローディング状態を表示するファイルで、ページ遷移時にも使用されます。
+
+app/tasks/loading.tsx
+
+```tsx
+export default function Loading() {
+  return <p>タスク一覧を読み込み中...</p>;
+}
+```
+
+### default exportで統一
+
+基本的にコンポーネントは `default export` に統一します。
+
+Next.js 標準のコンポーネント（ `page.tsx` や `layout.tsx` 、 `loading.tsx` など）が `default export` を採用しているため、それに合わせてプロジェクト全体で一貫性を保つためです。
+
+また、1ファイルで複数コンポーネントを export するケースは基本的に想定していません。
+
+components/UserProfile.tsx
+
+```tsx
+export default function UserProfile() {
+  return <div>User Profile</div>;
+}
+```
+
+## 関心ごと単位での分割例
+
+TaskListコンポーネントが以下の5つの関心を持っている場合の分割例を示します。
+
+| # | 関心 | 処理内容 |
+| --- | --- | --- |
+| 1 | 取得（I/O） | タスク一覧の取得 |
+| 2 | 更新（I/O） | タスクのステータス更新 |
+| 3 | 検証（フィルタ入力のバリデーション） | フィルタ条件の検証 |
+| 4 | 並び替え（UI内でsort切り替え） | ソート条件の切り替え |
+| 5 | UI描画（リストと行） | タスク一覧とタスク行の描画 |
+
+### 修正後の分割例
+
+**取得** → APIクライアント（ `/apis/tasks.server.ts` ）
+
+apis/tasks.server.ts
+
+```ts
+import { request } from '@/lib/request';
+import type { Result } from '@/types/result';
+import type { Task } from '@/types/task';
+
+export async function fetchTasks(): Promise<Result<Task[]>> {
+  return await request<Task[]>('/api/tasks');
+}
+```
+
+**更新** → Server Actions（ `/actions/tasks.ts` ）
+
+actions/tasks.ts
+
+```ts
+'use server';
+
+import { updateTaskStatus } from '@/apis/tasks.server';
+import { revalidateTag } from 'next/cache';
+
+export async function updateTaskAction(taskId: string, status: string) {
+  const result = await updateTaskStatus(taskId, status);
+
+  if (result.isSuccess) {
+    revalidateTag('tasks');
+  }
+
+  return result;
+}
+```
+
+**検証** → カスタムフック（ `/hooks/useFilterValidation.ts` ）
+
+hooks/useFilterValidation.ts
+
+```ts
+import { useState } from 'react';
+
+export function useFilterValidation() {
+  const [error, setError] = useState<string | null>(null);
+
+  const isValid = (value: string) => {
+    const errorMessage =
+      value.length > 100 ? 'フィルタ条件は100文字以内で入力してください' : null;
+    setError(errorMessage);
+    return !errorMessage;
+  };
+
+  return { error, isValid };
+}
+```
+
+**並び替え** → ユーティリティ関数（ `/utils/sortTasks.ts` ）
+
+utils/sortTasks.ts
+
+```ts
+import type { Task } from '@/types/task';
+
+export function sortTasks(tasks: Task[], sortKey: 'createdAt' | 'priority') {
+  return [...tasks].sort((a, b) => {
+    if (sortKey === 'createdAt') {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+    return b.priority - a.priority;
+  });
+}
+```
+
+**UI** → TaskListとTaskRowに分解
+
+components/TaskList.tsx
+
+```tsx
+import { TaskRow } from './TaskRow';
+import type { Task } from '@/types/task';
+
+type Props = {
+  tasks: Task[];
+};
+
+export function TaskList({ tasks }: Props) {
+  return (
+    <ul>
+      {tasks.map((task) => (
+        <TaskRow key={task.id} task={task} />
+      ))}
+    </ul>
+  );
+}
+```
+
+components/TaskRow.tsx
+
+```tsx
+import type { Task } from '@/types/task';
+
+type Props = {
+  task: Task;
+};
+
+export function TaskRow({ task }: Props) {
+  return (
+    <li>
+      <h3>{task.title}</h3>
+      <p>{task.description}</p>
+    </li>
+  );
+}
+```
