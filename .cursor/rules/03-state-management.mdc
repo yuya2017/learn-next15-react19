@@ -1,7 +1,6 @@
 ---
-globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
 ---
-
 # 状態管理
 
 ## 基本方針

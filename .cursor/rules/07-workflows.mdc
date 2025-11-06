@@ -1,7 +1,5 @@
 ---
-description: SDD の進め方 (Specify → Plan → Tasks → Implement → Knowledge)
-globs: ["specs/**/*.md"]
-alwaysApply: false
+alwaysApply: true
 ---
 # 手順
 
