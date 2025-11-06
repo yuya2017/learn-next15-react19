@@ -56,28 +56,6 @@ Codex で作業する際は以下のフェーズを順番に進め、必要に�
 
 ---
 
-## リポジトリ前提・不変条件 (Invariants)
-
-- 主要ディレクトリ:
-  - アプリケーション: `src/app`
-  - グローバルスタイル: `src/app/globals.css`
-  - ナレッジベース: `docs/`
-  - 仕様・タスク: `specs/`
-- Next.js 15 + React 19 を利用。Server Components を優先し、クライアント状態が必要な場合のみ `"use client"` を付与
-- Tailwind CSS v4 を使用。ユーティリティクラス重視で `@apply` を多用しない
-- TypeScript 厳格モード。`any` や未使用変数は禁止（ESLint で検出）
-- 生成物は必ず `npm run lint` と `npm run build` で検証
-
----
-
-## 章別ベストプラクティス（Next.js 15 / React 19）
-
-- Zenn本「Next.js 15 / React 19 実践設計ガイド」第1〜7章を基準に、Server Components 前提のディレクトリ構成・コンポーネント設計・データ取得/更新・状態管理・キャッシュ・エラーハンドリングまでの原則を定義
-- 章ごとの詳細ルールとアンチパターンは `.cursor/rules/09-next15-react19-guidelines.mdc` を参照
-- 2025-10-21 版を基準とし、書籍更新時は本セクションと `.cursor/rules/09-next15-react19-guidelines.mdc` を同期すること
-
----
-
 ## コマンドテンプレート
 
 ```text
@@ -101,7 +79,5 @@ Codex は次のフェーズへ進む前にユーザーへレビューを促し�
 ## 参考リソース
 
 - `.cursor/rules/` – Codex が常に読み込み、行動指針として利用するメタデータ
-- `docs/README.md` – ナレッジベースのメンテナンスガイド
-- `docs/development/workflow.md` – フローの詳細と PR チェックリスト
 
 このガイドを基準に、チーム全体で同じ品質と速度で Codex を活用できる状態を維持します。
