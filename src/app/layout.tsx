@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'スキルAUX',
-  description: 'スキルAUX',
+  title: 'create next app',
+  description: 'create next app',
 };
 
 export default function RootLayout({
