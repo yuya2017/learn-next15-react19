@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from 'next/cache';
+
 import { request } from '@/lib/request';
 import { failure, success } from '@/lib/result';
 import type { Result } from '@/types/result';
@@ -23,32 +25,40 @@ function getCrudCrudBaseUrl(): string {
 }
 
 /**
+ * TODO一覧を取得（キャッシュされたバージョン）
+ * use cacheを使ってデータをキャッシュ
+ */
+async function getCachedTodos() {
+  'use cache';
+  cacheTag('todos');
+  cacheLife('minutes'); // 5分キャッシュ
+
+  const url = getCrudCrudBaseUrl();
+
+  // デバッグ用：実際のURLをログ出力
+  console.log('[getCachedTodos] リクエストURL:', url);
+
+  const response = await request<CrudCrudTodo[]>(url);
+
+  if (!response.isSuccess) {
+    console.error('[getCachedTodos] エラー:', response.errorMessage);
+    throw new Error(response.errorMessage);
+  }
+
+  // CrudCrudの_idをidに変換
+  const todos = response.data.map(mapFromCrudCrud);
+  console.log('[getCachedTodos] 取得成功:', todos.length, '件');
+
+  return todos;
+}
+
+/**
  * TODO一覧を取得
- * CrudCrudからGETリクエストで全TODOを取得し、Data Cacheでキャッシュ
+ * CrudCrudからGETリクエストで全TODOを取得し、use cacheでキャッシュ
  */
 export async function fetchTodos(): Promise<Result<Todo[]>> {
   try {
-    const url = getCrudCrudBaseUrl();
-
-    // デバッグ用：実際のURLをログ出力
-    console.log('[fetchTodos] リクエストURL:', url);
-
-    const response = await request<CrudCrudTodo[]>(url, {
-      next: {
-        tags: ['todos'],
-        // revalidate: 3600, // 1時間キャッシュ
-      },
-    });
-
-    if (!response.isSuccess) {
-      console.error('[fetchTodos] エラー:', response.errorMessage);
-      return failure(response.errorMessage);
-    }
-
-    // CrudCrudの_idをidに変換
-    const todos = response.data.map(mapFromCrudCrud);
-    console.log('[fetchTodos] 取得成功:', todos.length, '件');
-
+    const todos = await getCachedTodos();
     return success(todos);
   } catch (error) {
     console.error('[fetchTodos] 例外:', error);

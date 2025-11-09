@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 
 import { toggleTodoApi } from '@/app/(private)/todo/_apis/todos.server';
 import type { Result } from '@/types/result';
@@ -19,8 +19,8 @@ export async function toggleTodo(payload: ToggleTodoPayload): Promise<Result<Tod
     return result;
   }
 
-  // Data Cacheを再検証して画面を自動更新
-  revalidateTag('todos', 'max');
+  // use cacheでキャッシュされたデータを即座に更新
+  updateTag('todos');
 
   return result;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useOptimistic, useState, useTransition } from 'react';
+import { useOptimistic, useState, useTransition } from 'react';
 import type { FormEvent } from 'react';
 
 import { createTodo } from '@/app/(private)/todo/_actions/createTodo';
@@ -14,18 +14,8 @@ export function useTodoList(initialTodos: Todo[]) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // 実際のAPI実装時は、以下のuseStateとuseEffectは不要になります。
-  // revalidateTagによるData Cache再検証で、Server Componentが自動的に
-  // 最新データを取得し、useOptimisticが自動的に更新されるため。
-  const [todos, setTodos] = useState(initialTodos);
-
-  // モックデータ使用時はローカルステートのみで管理
-  useEffect(() => {
-    setTodos(initialTodos);
-  }, [initialTodos]);
-
   const [optimisticTodos, updateOptimisticTodos] = useOptimistic(
-    todos,
+    initialTodos,
     (currentTodos, action: TodoAction) => {
       return currentTodos.map((todo) =>
         todo.id === action.id ? { ...todo, isDone: !todo.isDone } : todo
@@ -45,7 +35,7 @@ export function useTodoList(initialTodos: Todo[]) {
     setErrorMessage(null);
 
     startTransition(async () => {
-      // Server Actionを実行（revalidateTagで自動更新）
+      // Server Actionを実行（updateTagで即座に更新）
       const result = await createTodo({ title: trimmed });
 
       if (!result.isSuccess) {
@@ -55,8 +45,8 @@ export function useTodoList(initialTodos: Todo[]) {
         return;
       }
 
-      // モックデータ使用時はローカルステートのみで管理
-      setTodos((current) => [result.data, ...current]);
+      // updateTagによりServer Componentが自動的に再レンダリングされ、
+      // initialTodosが更新されるため、ローカルステート更新は不要
     });
   };
 
@@ -66,7 +56,7 @@ export function useTodoList(initialTodos: Todo[]) {
       updateOptimisticTodos({ type: 'toggle', id });
 
       // 現在のTodoを取得
-      const targetTodo = todos.find((todo) => todo.id === id);
+      const targetTodo = initialTodos.find((todo) => todo.id === id);
       if (!targetTodo) {
         return;
       }
@@ -83,8 +73,8 @@ export function useTodoList(initialTodos: Todo[]) {
         return;
       }
 
-      // モックデータ使用時はローカルステートのみで管理
-      setTodos((current) => current.map((todo) => (todo.id === id ? result.data : todo)));
+      // updateTagによりServer Componentが自動的に再レンダリングされ、
+      // initialTodosが更新されるため、ローカルステート更新は不要
     });
   };
 
