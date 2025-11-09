@@ -5,23 +5,30 @@ alwaysApply: true
 
 ## 基本方針
 
-### 1. Next/Reactの標準機能を優先
+### 1. Next.js 16: use cache + updateTag/revalidateTag
 
-Data Cache + Server Actions + revalidateTagやuseOptimisticなど、Next.js / Reactの標準機能を使ってシンプルに実装することが第一優先です。
+Next.js 16では、`use cache`でキャッシュしたデータを`updateTag`または`revalidateTag`で再検証します。
 
-### 2. 複雑な要件はTanStack Queryに委任
+- **updateTag**: ユーザー操作直後に即座に反映が必要（カート、お気に入りなど）
+- **revalidateTag**: 次回リクエスト時の反映で問題ない（コンテンツ、記事一覧など）
+
+### 2. Next/Reactの標準機能を優先
+
+`use cache` + Server Actions + `updateTag`/`revalidateTag` + `useOptimistic`など、Next.js / Reactの標準機能を使ってシンプルに実装することが第一優先です。
+
+### 3. 複雑な要件はTanStack Queryに委任
 
 クライアントフェッチ（useQuery）で取得したデータの更新や、複雑な要件の場合はTanStack Queryを使用します。
 
-### 3. 更新はServer Actionsを経由
+### 4. 更新はServer Actionsを経由
 
 登録・更新系は必ずServer Actionsを経由して外部APIを叩きます。
 
-### 4. Server Actionsは基本1つに集約
+### 5. Server Actionsは基本1つに集約
 
 一連の処理でServer Actionsは複数使わず、基本1つのServer Actionsに処理をまとめます。Server Actionsは直列実行される制約があるため、複数のServer Actionsを呼び出すと、待ち時間が増加しユーザー体験悪化の原因になります。
 
-### 5. 最終整合はDB側に統一
+### 6. 最終整合はDB側に統一
 
 楽観的更新やキャッシュの合成は、UXのための一時表現と捉え、最終的な整合性はDB側に合わせます。
 
@@ -29,20 +36,23 @@ Data Cache + Server Actions + revalidateTagやuseOptimisticなど、Next.js / Re
 
 | # | ユースケース | 概要 | 実装方法 |
 | --- | --- | --- | --- |
-| 1 | 通常の更新 | シンプルなCRUD操作 | Client Component + Server Actions + revalidateTag |
-| 2 | 楽観的更新（サーバーフェッチ + 単一画面） | 即時UI反映、裏側でDB更新、失敗時ロールバック | Client Component + startTransition + useOptimistic + Server Actions + revalidateTag |
-| 3 | 楽観的更新（サーバーフェッチ + 複数画面） | 複数画面・箇所にまたがる即時反映 | Client Component + startTransition + useOptimistic + Server Actions + revalidateTag |
-| 4 | 楽観的更新（クライアントフェッチ） | 更新するデータをクライアントフェッチしている即時UI反映 | Client Component + useMutation + onMutate + mutationFn + Server Actions + invalidateQueries |
-| 5 | 楽観的更新（複雑要件） | 再取得のタイミングやキャッシュ管理が複雑な要件 | Client Component + useQuery + useMutation + onMutate + mutationFn + Server Actions + onSettled |
-| 6 | デバウンス更新（オートセーブ） | 入力中に一定時間経過後に更新 | Client Component + useState + useMutation + mutationFn + Server Actions |
+| 1 | 通常の更新 | シンプルなCRUD操作 | Client Component + Server Actions + `updateTag`/`revalidateTag` |
+| 2 | 楽観的更新（use cache + 単一画面） | 即時UI反映、裏側でDB更新、失敗時ロールバック | Client Component + `useOptimistic` + Server Actions + `updateTag` |
+| 3 | 楽観的更新（use cache + 複数画面） | 複数画面・箇所にまたがる即時反映 | Client Component + `useOptimistic` + Server Actions + `updateTag` |
+| 4 | 楽観的更新（クライアントフェッチ） | 更新するデータをクライアントフェッチしている即時UI反映 | Client Component + `useMutation` + `onMutate` + Server Actions + `invalidateQueries` |
+| 5 | 楽観的更新（複雑要件） | 再取得のタイミングやキャッシュ管理が複雑な要件 | Client Component + `useMutation` + `onMutate` + Server Actions + `onSettled` |
+| 6 | デバウンス更新（オートセーブ） | 入力中に一定時間経過後に更新 | Client Component + `useMutation` + Server Actions |
 
 ## 1. 通常の更新
 
 ### 概要
 
-登録・編集・削除などの標準的な同期型CRUD操作を行うパターンです。Server Actionsを使ってサーバー側でデータ更新を実行し、成功後に `revalidateTag` で関連するData Cacheを再検証することで、画面表示とデータベースの状態を自動的に整合させます。
+登録・編集・削除などの標準的な同期型CRUD操作を行うパターンです。Server Actionsを使ってサーバー側でデータ更新を実行し、成功後に `updateTag` または `revalidateTag` で関連するキャッシュを再検証します。
 
-**Next.js 15では、このパターンがデータ更新の基本戦略です。**
+- **updateTag**: ユーザー操作直後に即座に反映が必要な場合（カート、いいねなど）
+- **revalidateTag**: 次回リクエスト時の反映で問題ない場合（記事一覧、コメントなど）
+
+**Next.js 16では、このパターンがデータ更新の基本戦略です。**
 
 ### サンプルコード
 
@@ -101,25 +111,28 @@ actions/profile.ts
 'use server';
 
 import { updateUserProfile } from '@/apis/users.server';
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import type { Result } from '@/types/result';
 
-export async function updateUserProfileAction(data: { name: string }): Promise<Result<void>> {
-  const result = await updateUserProfile(data);
+export async function updateUserProfileAction(userId: string, data: { name: string }): Promise<Result<void>> {
+  const result = await updateUserProfile(userId, data);
 
   if (result.isSuccess) {
-    revalidateTag(`user-${userId}`);
+    // 即座にキャッシュを更新
+    updateTag(`user-${userId}`);
   }
 
   return result;
 }
 ```
 
-## 2. 楽観的更新（サーバーフェッチ + 単一画面）
+> **Good to know**: `use cache`でキャッシュしたデータは、`updateTag`または`revalidateTag`で再検証できます。`updateTag`は即座に反映、`revalidateTag`は次回リクエスト時に反映されます。
+
+## 2. 楽観的更新（use cache + 単一画面）
 
 ### 概要
 
-データベースの更新完了を待たずに、ユーザーのアクション直後に即座にUIへ変更を反映する楽観的更新のパターンです。React 19の `useOptimistic` フックを使ってUI状態を先行して更新し、バックグラウンドでServer Actionsによるデータベース更新を実行します。
+データベースの更新完了を待たずに、ユーザーのアクション直後に即座にUIへ変更を反映する楽観的更新のパターンです。React 19の `useOptimistic` フックを使ってUI状態を先行して更新し、バックグラウンドでServer Actionsによるデータベース更新と`updateTag`によるキャッシュ更新を実行します。
 
 ### サンプルコード
 
@@ -176,7 +189,7 @@ actions/posts.ts
 'use server';
 
 import { toggleLikeAPI } from '@/apis/posts.server';
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import type { Result } from '@/types/result';
 
 export async function toggleLike(
@@ -186,18 +199,19 @@ export async function toggleLike(
   const result = await toggleLikeAPI(postId, liked);
 
   if (result.isSuccess) {
-    revalidateTag(`post-${postId}`);
+    // 即座にキャッシュを更新
+    updateTag(`post-${postId}`);
   }
 
   return result;
 }
 ```
 
-## 3. 楽観的更新（サーバーフェッチ + 複数画面）
+## 3. 楽観的更新（use cache + 複数画面）
 
 ### 概要
 
-同一のデータが複数の画面や複数箇所で表示されている場合の楽観的更新パターンです。更新をトリガーした箇所は `useOptimistic` で即座にUIに反映し、それ以外の箇所は `revalidateTag` によるData Cacheの再検証で自動的に最新データが反映されます。
+同一のデータが複数の画面や複数箇所で表示されている場合の楽観的更新パターンです。更新をトリガーした箇所は `useOptimistic` で即座にUIに反映し、それ以外の箇所は `updateTag` によるキャッシュ更新で自動的に最新データが反映されます。
 
 ### サンプルコード
 
@@ -253,7 +267,7 @@ actions/tasks.ts
 'use server';
 
 import { updateTaskStatusAPI } from '@/apis/tasks.server';
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import type { Result } from '@/types/result';
 import type { Task } from '@/types/task';
 
@@ -264,7 +278,8 @@ export async function updateTaskStatus(
   const result = await updateTaskStatusAPI(taskId, status);
 
   if (result.isSuccess) {
-    revalidateTag('tasks');
+    // 即座にキャッシュを更新（複数画面で自動反映）
+    updateTag('tasks');
   }
 
   return result;

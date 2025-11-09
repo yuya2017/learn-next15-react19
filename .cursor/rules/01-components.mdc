@@ -5,6 +5,14 @@ alwaysApply: true
 
 ## 基本方針
 
+### Next.js 16: Cache Componentsの考え方
+
+**Next.js 16では、すべてのコンポーネントは動的がデフォルトです。** 必要に応じて`use cache`でキャッシュし、ランタイムAPIを使う動的部分は`Suspense`でラップします。
+
+- **動的コンポーネント（デフォルト）**: cookies, headers, searchParams等を使用
+- **キャッシュ可能コンポーネント**: `use cache`を使用してキャッシュ
+- **Suspenseでラップ**: 動的コンポーネントやキャッシュ可能な非同期コンポーネント
+
 ### 関心ごと単位での分割
 
 関心ごとが3つ以上共存している場合（取得・更新・検証・整形・描画など）、分割を検討します。
@@ -52,6 +60,8 @@ export default function TasksPage() {
 ### ストリーミングとSuspenseの活用
 
 Server Componentでは、ストリーミングを活用してユーザー体験を向上させることが可能です。リソース（API）単位での分割を基本とし、非同期コンポーネントの場合は、必ずSuspenseでラップして上位へサスペンドさせないようにします。
+
+> **Good to know**: Next.js 16のCache Componentsでは、`use cache`を使ったキャッシュ可能なコンポーネントや、ランタイムAPIを使う動的コンポーネントは、必ずSuspenseでラップする必要があります。
 
 app/dashboard/page.tsx
 

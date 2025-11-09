@@ -5,17 +5,23 @@ alwaysApply: true
 
 ## 基本方針
 
-### 1. Server Componentで直接外部APIをfetch
+### 1. Next.js 16: 動的がデフォルト、必要に応じてキャッシュ
 
-Server Componentで直接外部APIを `fetch` し、シンプルに実装するのが第一優先です。
+**Next.js 16では、すべてのデータ取得は動的がデフォルトです。** Server Componentで直接データを取得し、必要に応じて`use cache`でキャッシュを有効にします。
 
-Next.js 15では、Server Componentが標準となっており、サーバーでのデータ取得が推奨されています。
+### 2. キャッシュ戦略の基準
 
-### 2. クライアントフェッチはTanStack QueryとRoute Handlerを使用
+データの性質に応じてキャッシュ戦略を選択します：
+
+- **キャッシュする**: マスタデータ、コンテンツ、低頻度更新データ → `use cache`を使用
+- **キャッシュしない**: リアルタイムデータ、ユーザーセッション、高頻度更新データ → 動的レンダリング
+- **迷ったら**: まずキャッシュせず実装し、パフォーマンス測定後に判断
+
+### 3. クライアントフェッチはTanStack QueryとRoute Handlerを使用
 
 クライアントフェッチの場合は、TanStack Queryを使用し、必ずRoute Handlerを経由して外部APIを叩きます。
 
-### 3. データフェッチコロケーション
+### 4. データフェッチコロケーション
 
 基本的にデータが必要なコンポーネントで直接フェッチをします。
 
@@ -25,45 +31,88 @@ Next.js 15では、Server Componentが標準となっており、サーバーで
 
 | # | ユースケース | 概要 | 実装方法 |
 | --- | --- | --- | --- |
-| 1 | 初回レンダリング時（静的・半静的） | 認証不要、ページ初表示で必要なデータを取得 | Server Component + fetch + Data Cache |
-| 2 | 初回レンダリング時（動的・ユーザー依存） | ログインユーザー固有情報、認証必須メニューなど | Server Component + fetch + (Data Cache) |
-| 3 | 初回レンダリング時（クライアント専用データ） | DBで保持しているデータをクライアントのみで利用 | Server Component + fetch + Client Component + use |
-| 4 | ユーザー操作時 | 画面操作によってデータを取得（検索・フィルタ・ソート等） | Client Component + useQuery + Route Handler + fetch |
-| 5 | 初回レンダリング時 + ユーザー操作時 | 初回描画で一覧を取得、以降はユーザー操作で再取得 | Server Component + fetch + prefetchQuery + HydrationBoundary + dehydrate + useQuery |
-| 6 | 依存クエリ | 先行入力に依存して次のデータを取得（都道府県→市区町村や検索サジェストなど） | Client Component + useQuery + Route Handler + fetch |
-| 7 | プリフェッチ | 次に開かれる可能性のあるデータを先読み（リンク先一覧の先読み） | Server Component + Link + prefetch or Client Component + router.prefetch |
+| 1 | 初回レンダリング時（静的・キャッシュ可能） | マスタデータ、コンテンツなど | Server Component + `use cache` + `cacheLife` |
+| 2 | 初回レンダリング時（動的・ユーザー依存） | ログインユーザー固有情報、認証必須メニューなど | Server Component + `use cache: private` or 動的レンダリング + Suspense |
+| 3 | 初回レンダリング時（ランタイムAPI使用） | cookies, headersなどを使用 | Server Component + 動的レンダリング + Suspense |
+| 4 | 初回レンダリング時（クライアント専用データ） | DBで保持しているデータをクライアントのみで利用 | Server Component + Client Component + use + Suspense |
+| 5 | ユーザー操作時 | 画面操作によってデータを取得（検索・フィルタ・ソート等） | Client Component + useQuery + Route Handler |
+| 6 | 初回レンダリング時 + ユーザー操作時 | 初回描画で一覧を取得、以降はユーザー操作で再取得 | Server Component + prefetchQuery + HydrationBoundary + useQuery |
+| 7 | 依存クエリ | 先行入力に依存して次のデータを取得（都道府県→市区町村など） | Client Component + useQuery + enabled |
+| 8 | プリフェッチ | 次に開かれる可能性のあるデータを先読み | Server Component + Link + prefetch or router.prefetch |
 
-## 1. 初回レンダリング時（静的・半静的）
+## 1. 初回レンダリング時（静的・キャッシュ可能）
 
 ### 概要
 
-認証不要の初期表示データをサーバー側で取得し、Data Cacheに格納して再利用するパターンです。Data Cacheは、fetchレスポンスをサーバー側で永続化し、2回目以降のリクエストではキャッシュから返すため、パフォーマンスが大幅に向上します。
+マスタデータやコンテンツなど、変更頻度が低く複数のリクエストで共有できるデータを`use cache`でキャッシュするパターンです。
 
-このパターンでは、初期描画時に必要なマスタデータ（カテゴリ一覧、国・都道府県リストなど）や、変更頻度が低いデータ（お知らせ、利用規約など）の取得時に使用します。
+このパターンでは、カテゴリ一覧、国・都道府県リスト、お知らせ、利用規約、ブログ記事など、低〜中頻度で更新されるデータの取得時に使用します。
 
 ### サンプルコード
+
+#### パターンA: 関数レベルでキャッシュ
 
 apis/features.server.ts
 
 ```ts
-import type { Feature } from '@/types/feature';
+import { cacheTag, cacheLife } from 'next/cache'
+import type { Feature } from '@/types/feature'
 
-export async function fetchFeatures(): Promise<Feature[]> {
-  const res = await fetch(
-    `${process.env.BASE_URL}/api/features`,
-    {
-      cache: 'force-cache',
-      next: {
-        tags: ['features'],
-      },
-    },
-  );
-
+export async function fetchFeatures() {
+  'use cache'
+  cacheTag('features')
+  cacheLife('days') // 1日キャッシュ
+  
+  const res = await fetch(`${process.env.BASE_URL}/api/features`)
+  
   if (!res.ok) {
-    throw new Error(res.statusText);
+    throw new Error(res.statusText)
   }
+  
+  return await res.json()
+}
+```
 
-  return await res.json();
+#### パターンB: コンポーネントレベルでキャッシュ
+
+app/features/components/FeatureList.tsx
+
+```tsx
+import { cacheTag, cacheLife } from 'next/cache'
+
+export async function FeatureList() {
+  'use cache'
+  cacheTag('features')
+  cacheLife('hours') // 1時間キャッシュ
+  
+  const res = await fetch(`${process.env.BASE_URL}/api/features`)
+  const features = await res.json()
+  
+  return (
+    <ul>
+      {features.map((feature) => (
+        <li key={feature.id}>{feature.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+app/features/page.tsx
+
+```tsx
+import { Suspense } from 'react'
+import { FeatureList } from './components/FeatureList'
+
+export default function FeaturesPage() {
+  return (
+    <div>
+      <h1>機能一覧</h1>
+      <Suspense fallback={<p>読み込み中...</p>}>
+        <FeatureList />
+      </Suspense>
+    </div>
+  )
 }
 ```
 
@@ -71,11 +120,160 @@ export async function fetchFeatures(): Promise<Feature[]> {
 
 ### 概要
 
-認証やセッションに依存するユーザー固有のデータをサーバーで取得するパターンです。 `cookies()` や `headers()` を使ってユーザー判定を行い、そのユーザーに紐づくデータを初回レンダリング時に取得します。
+ユーザー固有のデータをサーバーで取得するパターンです。`use cache: private`を使ってユーザーごとにキャッシュするか、動的レンダリングで毎回取得するか選択します。
 
-このパターンでは、ダッシュボードのユーザー統計情報、マイページのプロフィール、ログインユーザー専用のお知らせなど、初期描画時に必要なユーザー固有データの取得時に使用します。
+このパターンでは、ダッシュボードのユーザー統計情報、マイページのプロフィール、購入履歴など、初期描画時に必要なユーザー固有データの取得時に使用します。
 
-## 3. 初回レンダリング時（クライアント専用データ）
+### サンプルコード
+
+#### パターンA: ユーザー固有データをキャッシュ（use cache: private）
+
+apis/users.server.ts
+
+```ts
+import { cacheTag, cacheLife } from 'next/cache'
+import type { UserProfile } from '@/types/user'
+
+export async function fetchUserProfile(userId: string) {
+  'use cache: private'
+  cacheTag(`user-${userId}`)
+  cacheLife('minutes') // 5分キャッシュ
+  
+  const res = await fetch(`${process.env.BASE_URL}/api/users/${userId}`)
+  
+  if (!res.ok) {
+    throw new Error(res.statusText)
+  }
+  
+  return await res.json()
+}
+```
+
+app/profile/page.tsx
+
+```tsx
+import { Suspense } from 'react'
+import { cookies } from 'next/headers'
+import { fetchUserProfile } from '@/apis/users.server'
+import { UserProfile } from './components/UserProfile'
+
+export default async function ProfilePage() {
+  const cookieStore = await cookies()
+  const userId = cookieStore.get('userId')?.value
+  
+  if (!userId) {
+    return <p>ログインしてください</p>
+  }
+  
+  return (
+    <div>
+      <h1>プロフィール</h1>
+      <Suspense fallback={<p>読み込み中...</p>}>
+        <UserProfile userId={userId} />
+      </Suspense>
+    </div>
+  )
+}
+```
+
+app/profile/components/UserProfile.tsx
+
+```tsx
+import { fetchUserProfile } from '@/apis/users.server'
+
+type Props = {
+  userId: string
+}
+
+export async function UserProfile({ userId }: Props) {
+  const profile = await fetchUserProfile(userId)
+  
+  return (
+    <div>
+      <p>名前: {profile.name}</p>
+      <p>メール: {profile.email}</p>
+    </div>
+  )
+}
+```
+
+#### パターンB: 動的レンダリング（キャッシュなし）
+
+リアルタイム性が求められるデータや、キャッシュする必要がないデータは`use cache`を使わずに動的レンダリングします。
+
+apis/dashboard.server.ts
+
+```ts
+import type { DashboardStats } from '@/types/dashboard'
+
+export async function fetchDashboardStats(userId: string) {
+  // use cacheを使わない = 常に最新データを取得
+  const res = await fetch(`${process.env.BASE_URL}/api/dashboard/${userId}`)
+  
+  if (!res.ok) {
+    throw new Error(res.statusText)
+  }
+  
+  return await res.json()
+}
+```
+
+## 3. 初回レンダリング時（ランタイムAPI使用）
+
+### 概要
+
+`cookies()`, `headers()`, `searchParams`などのランタイムAPIを使用するコンポーネントは、`use cache`を使えないため、必ずSuspenseでラップして動的レンダリングします。
+
+Cache Componentsでは、ランタイムAPIを使うコンポーネントがSuspenseでラップされていない場合、エラーになります。
+
+### サンプルコード
+
+app/user/components/UserMenu.tsx
+
+```tsx
+import { cookies } from 'next/headers'
+
+export async function UserMenu() {
+  // cookies()を使うので use cache は使えない
+  const session = (await cookies()).get('session')?.value
+  
+  if (!session) {
+    return <a href="/login">ログイン</a>
+  }
+  
+  return (
+    <nav>
+      <a href="/profile">プロフィール</a>
+      <button>ログアウト</button>
+    </nav>
+  )
+}
+```
+
+app/layout.tsx
+
+```tsx
+import { Suspense } from 'react'
+import { UserMenu } from './components/UserMenu'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html>
+      <body>
+        <header>
+          {/* ランタイムAPIを使うコンポーネントはSuspenseでラップ */}
+          <Suspense fallback={<div>読み込み中...</div>}>
+            <UserMenu />
+          </Suspense>
+        </header>
+        {children}
+      </body>
+    </html>
+  )
+}
+```
+
+## 4. 初回レンダリング時（クライアント専用データ）
 
 ### 概要
 
@@ -142,13 +340,15 @@ export function ProfileEditForm({ profilePromise }: Props) {
 }
 ```
 
-## 4. ユーザー操作時
+## 5. ユーザー操作時
 
 ### 概要
 
 ユーザーの操作をトリガーとしてデータを取得する場合です。TanStack QueryとRoute Handlerを組み合わせることで、クライアント側のキャッシュ管理を効率的に行いながら、データ取得を実現します。
 
 このパターンでは、検索・フィルタ・ソート・ページネーション・モーダル開閉など、ユーザーのインタラクションに応じてデータを取得する際に使用します。
+
+> **Good to know**: サーバー側のキャッシュ（`use cache`）とクライアント側のキャッシュ（TanStack Query）は併用を避けます。キャッシュレイヤーを混在させると整合性管理が複雑になります。
 
 ### サンプルコード
 
@@ -234,11 +434,13 @@ export async function GET(request: NextRequest) {
 }
 ```
 
-## 5. 初回レンダリング時 + ユーザー操作時（ハイブリッド）
+## 6. 初回レンダリング時 + ユーザー操作時（ハイブリッド）
 
 ### 概要
 
 初回レンダリング時はServer Componentでサーバーフェッチを行い、レンダリング後のユーザー操作でのデータフェッチは、Client ComponentでTanStack Queryを使用し再取得する、ハイブリッドなデータ取得パターンです。
+
+> **Good to know**: サーバー側で`use cache`を使っている場合は、このパターンは使用しません。`use cache`とTanStack Queryの併用は避けます。
 
 ### サンプルコード
 
@@ -321,7 +523,7 @@ export function SearchResults() {
 }
 ```
 
-## 6. 依存クエリ／タイプアヘッド／インクリメンタル検索
+## 7. 依存クエリ／タイプアヘッド／インクリメンタル検索
 
 ### 概要
 
@@ -387,7 +589,7 @@ export function AddressForm() {
 }
 ```
 
-## 7. プリフェッチ
+## 8. プリフェッチ
 
 ### 概要
 
