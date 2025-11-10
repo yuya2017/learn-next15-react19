@@ -1,28 +1,10 @@
 import { cacheLife, cacheTag } from 'next/cache';
 
-import { request } from '@/lib/request';
+import { db } from '@/lib/db';
 import { failure, success } from '@/lib/result';
 import type { Result } from '@/types/result';
 
-import {
-  type CrudCrudTodo,
-  type Todo,
-  mapFromCrudCrud,
-  mapToCrudCrud,
-} from '@/app/(private)/todo/_types/todo';
-
-// CrudCrudのベースURL
-function getCrudCrudBaseUrl(): string {
-  const endpointId = process.env.CRUDCRUD_ENDPOINT_ID;
-
-  if (!endpointId || endpointId === 'your-unique-endpoint-id-here') {
-    throw new Error(
-      'CRUDCRUD_ENDPOINT_IDが設定されていません。.env.localに正しいエンドポイドIDを設定してください。'
-    );
-  }
-
-  return `https://crudcrud.com/api/${endpointId}/todos`;
-}
+import type { Todo } from '@/app/(private)/todo/_types/todo';
 
 /**
  * TODO一覧を取得（キャッシュされたバージョン）
@@ -33,28 +15,29 @@ async function getCachedTodos() {
   cacheTag('todos');
   cacheLife('minutes'); // 5分キャッシュ
 
-  const url = getCrudCrudBaseUrl();
+  console.log('[getCachedTodos] Prismaから直接取得');
 
-  // デバッグ用：実際のURLをログ出力
-  console.log('[getCachedTodos] リクエストURL:', url);
+  const todos = await db.todo.findMany({
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
 
-  const response = await request<CrudCrudTodo[]>(url);
+  // Prismaの型をTodo型に変換（id, title, isDoneのみ）
+  const result: Todo[] = todos.map((todo: { id: string; title: string; isDone: boolean }) => ({
+    id: todo.id,
+    title: todo.title,
+    isDone: todo.isDone,
+  }));
 
-  if (!response.isSuccess) {
-    console.error('[getCachedTodos] エラー:', response.errorMessage);
-    throw new Error(response.errorMessage);
-  }
+  console.log('[getCachedTodos] 取得成功:', result.length, '件');
 
-  // CrudCrudの_idをidに変換
-  const todos = response.data.map(mapFromCrudCrud);
-  console.log('[getCachedTodos] 取得成功:', todos.length, '件');
-
-  return todos;
+  return result;
 }
 
 /**
  * TODO一覧を取得
- * CrudCrudからGETリクエストで全TODOを取得し、use cacheでキャッシュ
+ * Prismaから直接取得し、use cacheでキャッシュ
  */
 export async function fetchTodos(): Promise<Result<Todo[]>> {
   try {
@@ -70,7 +53,7 @@ export async function fetchTodos(): Promise<Result<Todo[]>> {
 
 /**
  * TODOを作成
- * CrudCrudへPOSTリクエストでTODOを作成
+ * Prismaから直接作成
  */
 export async function createTodoApi(payload: { title: string }): Promise<Result<Todo>> {
   try {
@@ -80,26 +63,28 @@ export async function createTodoApi(payload: { title: string }): Promise<Result<
       return failure('タイトルは必須です');
     }
 
-    const url = getCrudCrudBaseUrl();
+    console.log('[createTodoApi] Prismaから直接作成:', trimmedTitle);
 
-    const response = await request<CrudCrudTodo>(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    // TODOを作成
+    const todo = await db.todo.create({
+      data: {
+        title: trimmedTitle,
+        isDone: false,
       },
-      body: JSON.stringify({ title: trimmedTitle, isDone: false }),
-      cache: 'no-store', // 作成処理はキャッシュしない
     });
 
-    if (!response.isSuccess) {
-      return failure(response.errorMessage);
-    }
+    // Prismaの型をTodo型に変換
+    const result: Todo = {
+      id: todo.id,
+      title: todo.title,
+      isDone: todo.isDone,
+    };
 
-    // CrudCrudの_idをidに変換
-    const todo = mapFromCrudCrud(response.data);
+    console.log('[createTodoApi] 作成成功:', result);
 
-    return success(todo);
+    return success(result);
   } catch (error) {
+    console.error('[createTodoApi] 例外:', error);
     return failure(
       error instanceof Error ? error.message : 'TODOの作成中に予期しないエラーが発生しました'
     );
@@ -108,7 +93,7 @@ export async function createTodoApi(payload: { title: string }): Promise<Result<
 
 /**
  * TODOの完了状態を切り替え
- * CrudCrudへPUTリクエストでTODOを更新
+ * Prismaから直接更新
  */
 export async function toggleTodoApi(payload: {
   id: string;
@@ -116,48 +101,37 @@ export async function toggleTodoApi(payload: {
   title: string;
 }): Promise<Result<Todo>> {
   try {
-    const url = `${getCrudCrudBaseUrl()}/${payload.id}`;
+    const { id, title, isDone } = payload;
 
-    // CrudCrud用のペイロードに変換（_idは除外）
-    const crudcrudPayload = mapToCrudCrud({ title: payload.title, isDone: payload.isDone });
+    console.log('[toggleTodoApi] Prismaから直接更新:', { id, title, isDone });
 
-    console.log('[toggleTodoApi] リクエストURL:', url);
-    console.log('[toggleTodoApi] ペイロード:', crudcrudPayload);
+    // TODOを更新
+    try {
+      const todo = await db.todo.update({
+        where: { id },
+        data: {
+          title: title.trim(),
+          isDone,
+        },
+      });
 
-    const response = await request<CrudCrudTodo>(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(crudcrudPayload),
-      cache: 'no-store', // 更新処理はキャッシュしない
-    });
-
-    console.log('[toggleTodoApi] レスポンス:', response);
-
-    if (!response.isSuccess) {
-      console.error('[toggleTodoApi] エラー:', response.errorMessage);
-      return failure(response.errorMessage);
-    }
-
-    // CrudCrudのPUTは空のレスポンスを返す場合があるため、
-    // レスポンスが空の場合は、送信したデータから楽観的に構築
-    let todo: Todo;
-    if (response.data && Object.keys(response.data).length > 0) {
-      // レスポンスにデータがある場合は、それを使用
-      todo = mapFromCrudCrud(response.data);
-    } else {
-      // レスポンスが空の場合は、送信したデータから構築
-      todo = {
-        id: payload.id,
-        title: payload.title,
-        isDone: payload.isDone,
+      // Prismaの型をTodo型に変換
+      const result: Todo = {
+        id: todo.id,
+        title: todo.title,
+        isDone: todo.isDone,
       };
+
+      console.log('[toggleTodoApi] 更新成功:', result);
+
+      return success(result);
+    } catch (error) {
+      // Prismaのエラーをチェック（レコードが見つからない場合）
+      if (error instanceof Error && error.message.includes('Record to update does not exist')) {
+        return failure(`ID "${id}" のTODOが見つかりません`);
+      }
+      throw error;
     }
-
-    console.log('[toggleTodoApi] 更新成功:', todo);
-
-    return success(todo);
   } catch (error) {
     console.error('[toggleTodoApi] 例外:', error);
     return failure(

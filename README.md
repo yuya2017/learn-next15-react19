@@ -2,23 +2,130 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### 前提条件
+
+- Node.js 18以上
+- Docker Desktop（PostgreSQLを使用するため）
+
+### セットアップ手順
+
+1. **依存関係のインストール**
+
+```bash
+npm install
+```
+
+2. **PostgreSQLの起動**
+
+```bash
+docker compose up -d
+```
+
+PostgreSQLコンテナが起動していることを確認：
+
+```bash
+docker compose ps
+```
+
+3. **環境変数の設定**
+
+`.env.local`ファイルを作成し、以下の内容を設定：
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/todos_db?schema=public"
+```
+
+4. **Prismaマイグレーションの実行**
+
+```bash
+npx prisma migrate dev
+```
+
+これにより、データベーススキーマが作成されます。
+
+5. **開発サーバーの起動**
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## データベース管理
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Prisma Studio（データベースGUI）
+
+データベースの内容を確認・編集する場合：
+
+```bash
+npx prisma studio
+```
+
+ブラウザで [http://localhost:5555](http://localhost:5555) が開きます。
+
+### マイグレーション
+
+スキーマを変更した場合：
+
+```bash
+npx prisma migrate dev --name <migration-name>
+```
+
+### データベースのリセット
+
+データベースをリセットしたい場合：
+
+```bash
+npx prisma migrate reset
+```
+
+**注意**: このコマンドはすべてのデータを削除します。
+
+## トラブルシューティング
+
+### PostgreSQLに接続できない
+
+1. Dockerコンテナが起動しているか確認：
+
+```bash
+docker compose ps
+```
+
+2. コンテナが起動していない場合：
+
+```bash
+docker compose up -d
+```
+
+3. ログを確認：
+
+```bash
+docker compose logs postgres
+```
+
+### マイグレーションエラー
+
+1. データベースをリセット：
+
+```bash
+npx prisma migrate reset
+```
+
+2. 再度マイグレーションを実行：
+
+```bash
+npx prisma migrate dev
+```
+
+### 環境変数が反映されない
+
+1. `.env.local`ファイルが正しく作成されているか確認
+2. 開発サーバーを再起動：
+
+```bash
+# サーバーを停止（Ctrl+C）してから
+npm run dev
+```
 
 ## Learn More
 
