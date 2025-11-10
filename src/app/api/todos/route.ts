@@ -7,17 +7,30 @@ import type { Todo } from '@/app/(private)/todo/_types/todo';
 
 /**
  * GET /api/todos
- * TODO一覧を取得
+ * TODO一覧を取得（フィルタ・ソート対応）
  */
-export async function GET(): Promise<NextResponse<Result<Todo[]>>> {
+export async function GET(request: NextRequest): Promise<NextResponse<Result<Todo[]>>> {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const filter = searchParams.get('filter') || 'all';
+    const sortKey = searchParams.get('sortKey') || 'createdAt';
+    const sortOrder = searchParams.get('sortOrder') || 'desc';
+
+    // フィルタ条件を構築
+    const where =
+      filter === 'all' ? {} : filter === 'active' ? { isDone: false } : { isDone: true };
+
+    // ソート条件を構築
+    const orderBy: Record<string, 'asc' | 'desc'> = {
+      [sortKey]: sortOrder as 'asc' | 'desc',
+    };
+
     const todos = await db.todo.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
+      where,
+      orderBy,
     });
 
-    // Prismaの型をTodo型に変換（id, title, isDoneのみ）
+    // Prismaの型をTodo型に変換
     const result: Todo[] = todos.map((todo) => ({
       id: todo.id,
       title: todo.title,
