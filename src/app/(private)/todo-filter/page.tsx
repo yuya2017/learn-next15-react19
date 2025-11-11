@@ -1,27 +1,8 @@
 import { Suspense } from 'react';
-import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 
-import { fetchTodos } from '@/app/(private)/todo/_apis/todos.server';
-import { getQueryClient } from '@/lib/queryClient';
-import TodoFilterClient from '@/app/(private)/todo-filter/_components/TodoFilterClient';
+import TodoFilterDehydratedState from '@/app/(private)/todo-filter/_components/TodoFilterDehydratedState';
 
-export default async function TodoFilterPage() {
-  const queryClient = getQueryClient();
-
-  // 初期データをprefetch（awaitしない＝pendingのままdehydrateに含める）
-  queryClient.prefetchQuery({
-    queryKey: ['todos', 'all', 'createdAt', 'desc'],
-    queryFn: async () => {
-      const result = await fetchTodos();
-      if (!result.isSuccess) {
-        throw new Error(result.errorMessage);
-      }
-      return result.data;
-    },
-  });
-
-  const dehydratedState = dehydrate(queryClient);
-
+export default function TodoFilterPage() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
       <header className="space-y-1">
@@ -32,9 +13,7 @@ export default async function TodoFilterPage() {
         </p>
       </header>
       <Suspense fallback={<p className="text-gray-500">初期データを読み込み中...</p>}>
-        <HydrationBoundary state={dehydratedState}>
-          <TodoFilterClient />
-        </HydrationBoundary>
+        <TodoFilterDehydratedState />
       </Suspense>
     </div>
   );
