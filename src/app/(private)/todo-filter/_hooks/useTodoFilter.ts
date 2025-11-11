@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { createTodo } from '@/app/(private)/todo/_actions/createTodo';
@@ -12,12 +12,10 @@ import {
   type TodoSortKey,
   type TodoSortOrder,
 } from '@/app/(private)/todo-filter/_apis/todos.client';
-import type { Todo } from '@/app/(private)/todo/_types/todo';
 
 export function useTodoFilter() {
   const [title, setTitle] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
   const [filter, setFilter] = useState<TodoFilter>('all');
   const [sortKey, setSortKey] = useState<TodoSortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<TodoSortOrder>('desc');
@@ -32,6 +30,7 @@ export function useTodoFilter() {
     queryKey: ['todos', filter, sortKey, sortOrder],
     queryFn: () => fetchTodosClient({ filter, sortKey, sortOrder }),
     staleTime: 5 * 60 * 1000, // 5分間キャッシュ
+    refetchOnMount: false, // 初期データを再利用（パターン6）
   });
 
   // TODO作成のmutation
@@ -77,7 +76,7 @@ export function useTodoFilter() {
     event.preventDefault();
 
     const trimmed = title.trim();
-    if (!trimmed || isPending || createMutation.isPending) {
+    if (!trimmed || createMutation.isPending) {
       return;
     }
 
@@ -101,7 +100,7 @@ export function useTodoFilter() {
     todos,
     title,
     setTitle,
-    isSubmitting: isPending || createMutation.isPending,
+    isSubmitting: createMutation.isPending,
     errorMessage,
     handleSubmit,
     toggleTodo,
