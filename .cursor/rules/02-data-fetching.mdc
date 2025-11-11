@@ -523,6 +523,76 @@ export function SearchResults() {
 }
 ```
 
+### ストリーミング対応
+複数API使用などでストリーミングしたい場合は、prefetchQueryをawaitせずにdehydrateに含めます。
+```
+lib/queryClient.ts
+import { QueryClient, defaultShouldDehydrateQuery } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+
+export function ReactQueryProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          dehydrate: {
+            // pending状態のqueryもdehydrate結果に含めるようにする
+            shouldDehydrateQuery: (query) =>
+              defaultShouldDehydrateQuery(query) ||
+              query.state.status === 'pending',
+          },
+        },
+      }),
+  );
+
+  return (
+    <QueryClientProvider client={client}>
+      {children}
+      <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
+    </QueryClientProvider>
+  );
+}
+
+app/dashboard/page.tsx
+import { Suspense } from 'react';
+import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
+import { getQueryClient } from '@/lib/queryClient';
+import { FirstWidget } from './components/FirstWidget';
+import { SecondWidget } from './components/SecondWidget';
+
+// 非同期コンポーネントにしなくて済む
+export default function Page() {
+  const queryClient = getQueryClient();
+
+  // awaitしない
+  queryClient.prefetchQuery(firstOptions);
+  queryClient.prefetchQuery(secondOptions);
+
+  const dehydratedState = dehydrate(queryClient);
+
+  return (
+    <>
+      {/* データフェッチを実行するコンポーネントを<Suspense>で囲む */}
+      <Suspense fallback={<p>First Loading...</p>}>
+        <HydrationBoundary state={dehydratedState}>
+          <FirstWidget />
+        </HydrationBoundary>
+      </Suspense>
+
+      <Suspense fallback={<p>Second Loading...</p>}>
+        <HydrationBoundary state={dehydratedState}>
+          <SecondWidget />
+        </HydrationBoundary>
+      </Suspense>
+    </>
+  );
+}
+```
+
 ## 7. 依存クエリ／タイプアヘッド／インクリメンタル検索
 
 ### 概要
