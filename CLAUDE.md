@@ -19,14 +19,14 @@
 
 変更のタイプに応じて、適切なフローを選択してください：
 
-| 変更タイプ | 推奨フロー | 所要時間目安 | 説明 |
-|-----------|-----------|-------------|------|
-| **新機能追加** | Phase 1-11 全て | 60-120分 | 完全なワークフロー |
-| **中規模バグ修正** | 1,4,5,6,8,9A,10,11 | 30-60分 | 調査→実装→テスト→確認 |
-| **UI/デザイン調整** | 1,3,4,5,8,9A,10,11 | 20-40分 | UIデザインレビュー含む |
-| **小規模リファクタ** | 1,4,5,8,10,11 | 15-30分 | 既存パターン踏襲 |
-| **タイポ修正** | 5,8,10,11 | 5分 | 設定ファイルや小さな修正 |
-| **ドキュメント更新** | 5,10,11 | 5-10分 | ドキュメントのみの変更 |
+| 変更タイプ | 推奨フロー | 所要時間目安 | 説明 | specs作成 |
+|-----------|-----------|-------------|------|----------|
+| **新機能追加** | Phase 1-9 全て | 60-120分 | 完全なワークフロー | spec.md, plan.md, tasks.md |
+| **中規模バグ修正** | 1,4,5,8,9A | 30-60分 | 調査→実装→確認 | tasks.md のみ |
+| **UI/デザイン調整** | 1,3,4,5,8,9A | 20-40分 | UIデザインレビュー含む | spec.md (UI仕様), tasks.md |
+| **小規模リファクタ** | 1,4,5,8 | 15-30分 | 既存パターン踏襲 | 任意 |
+| **タイポ修正** | 5,8 | 5分 | 設定ファイルや小さな修正 | 不要 |
+| **ドキュメント更新** | 5 | 5-10分 | ドキュメントのみの変更 | 不要 |
 
 **Phase 9について:**
 - **Phase 9A（簡易確認）**: 必須 - Next.js MCPでエラーチェック
@@ -44,13 +44,10 @@
 5. **Phase 5: Implementation** - Serenaでコード実装
 8. **Phase 8: Quality Checks** - bun run でチェック実行
 9. **Phase 9A: Runtime Verification** - Next.js MCPで動作確認
-10. **Phase 10: Git Commit** - コミット作成
-11. **Phase 11: Push** - リモートへプッシュ
 
 #### 状況に応じて実行（推奨）
 2. **Phase 2: Architecture Design** - 新機能や大規模変更時
 3. **Phase 3: UI/UX Design** - UI変更がある場合
-6. **Phase 6: Testing & Stories** - ロジック変更がある場合
 7. **Phase 7: Code Review** - リファクタリングが必要な場合
 9. **Phase 9B: Browser Verification** - 詳細な動作確認が必要な場合
 
@@ -61,7 +58,6 @@
 以下のカスタムコマンドが利用可能です：
 
 - **`component-refactoring-specialist`** (`.claude/agents/app-code-specialist.md`) - Reactコンポーネントのリファクタリング専門家。ロジック抽出、プレゼンターパターン適用、ディレクトリ構造の再編成を担当
-- **`test-guideline-enforcer`** (`.claude/agents/test-guideline-enforcer.md`) - Vitest / React Testing Libraryを使用したテストコードの品質、構造、命名規約を強制
 - **`storybook-story-creator`** (`.claude/agents/storybook-story-creator.md`) - プロジェクトルールに準拠したStorybookストーリーの作成とメンテナンス
 - **`ui-design-advisor`** (`.claude/agents/ui-design-advisor.md`) - ダークテーマに焦点を当てたUI/UXデザイン専門家。レイアウトのレビューと改善提案を担当
 - **`spec-document-creator`** (`.claude/agents/spec-document-creator.md`) - 拡張可能な仕様書作成コマンド。機能仕様、API仕様、アーキテクチャ仕様など複数のドキュメントタイプをサポート
@@ -191,8 +187,32 @@ path: 'src/auth/login.ts'
 - 既存コンポーネントとの整合性確認
 
 #### 3. 仕様書の作成
-- `spec-document-creator` エージェントを使用して仕様書を作成
-- 機能仕様、API仕様、アーキテクチャ仕様など必要に応じて作成
+
+**機能仕様書（spec.md）の作成:**
+```bash
+# 機能名フォルダを作成
+mkdir -p specs/[feature-name]
+
+# テンプレートから機能仕様書を作成
+cp specs/templates/spec.md specs/[feature-name]/spec.md
+```
+- ゴールと成功指標を明確にする
+- ユーザーストーリーを記述（As a [role], When [situation], I want [goal] so that [outcome]）
+- 機能要件と非機能要件をリストアップ
+- 受け入れ基準（テスト観点）を定義
+
+**技術計画書（plan.md）の作成:**
+```bash
+# テンプレートから技術計画書を作成
+cp specs/templates/plan.md specs/[feature-name]/plan.md
+```
+- 技術的な制約と前提を記録
+- 複数の技術アプローチを検討（Best-of-N）
+- 選定理由と根拠を明記
+- データモデル、UI変更点、テスト観点をメモ
+
+**その他の仕様書（オプション）:**
+- `spec-document-creator` エージェントを使用してAPI仕様、アーキテクチャ仕様などを作成
 - 既存コードからリバースエンジニアリングする場合は、コード分析機能を活用
 
 #### 4. アーキテクチャ決定の記録
@@ -211,7 +231,9 @@ path: 'src/auth/login.ts'
 - [ ] コンポーネント分割方針を決定
 - [ ] 状態管理とデータフローを設計
 - [ ] パフォーマンス戦略を検討
-- [ ] 必要に応じて仕様書を作成
+- [ ] `specs/[feature-name]/spec.md` を作成（機能仕様書）
+- [ ] `specs/[feature-name]/plan.md` を作成（技術計画書）
+- [ ] 必要に応じて追加の仕様書を作成
 - [ ] 重要なアーキテクチャ決定をADRとして記録
 
 ---
@@ -256,6 +278,15 @@ path: 'src/auth/login.ts'
 - 承認された提案に従って実装を実行
 - 複数のファイル変更は並列で実行
 
+#### 0. UI仕様の記録
+
+**機能仕様書（spec.md）にUI仕様を追加:**
+- Phase 2で作成した `specs/[feature-name]/spec.md` にUI仕様を追記
+- 承認されたデザイン改善案を記録
+- カラーコード、スペーシング値、フォントサイズなどの具体的な値を記録
+- レスポンシブデザインのブレークポイントを記録
+- アクセシビリティ要件を記録
+
 #### 1. デザインレビュー
 - ダークテーマを中心としたカラー戦略
 - タイポグラフィとスペーシングの確認
@@ -274,6 +305,7 @@ path: 'src/auth/login.ts'
 - [ ] UI変更があるかどうかを判断済み
 - [ ] UI変更がある場合、ui-design-advisorエージェントのガイドラインに従ってPhase 1（Analysis & Planning）を実施
 - [ ] 改善案をユーザーに提示し、承認を得た
+- [ ] `specs/[feature-name]/spec.md` にUI仕様を追記（カラー、スペーシング、フォントサイズ、レスポンシブ、アクセシビリティ）
 - [ ] カラーとタイポグラフィを確認
 - [ ] アクセシビリティ要件を確認
 - [ ] レスポンシブ対応を計画
@@ -291,14 +323,33 @@ path: 'src/auth/login.ts'
 - Phase 3で承認された改善案を実装計画に反映
 - **ADRの決定に従った実装計画になっているか確認**
 
-#### 1. 実装計画の作成
-- タスクを細分化し、実装順序を決定
-- TodoWriteツールで作業項目をトラッキング
-- 各タスクの依存関係を明確化
+#### 1. タスクリスト（tasks.md）の作成
+
+**テンプレートからタスクリストを作成:**
+```bash
+# テンプレートからタスクリストを作成
+cp specs/templates/tasks.md specs/[feature-name]/tasks.md
+```
+
+**tasks.mdの記述内容:**
+- タスクを細分化（1タスク = 1成果物に分解）
+- 各タスクの目的と成果物を明記
+- DoD（Definition of Done）を定義
+- タスク間の依存関係を記録
+- テスト戦略（単体/統合/E2Eなど）を計画
+
+**TodoWriteツールとの併用:**
+- TodoWriteツールで作業項目をリアルタイムにトラッキング
+- tasks.mdはプランニング段階の全体設計
+- TodoWriteは実装中の進捗管理
+
+#### 2. 実装計画の検証
 - **Phase 3で承認された改善案をタスクに含める**
 - **ADRの決定に従った実装方針を確認**
+- 各タスクの依存関係を明確化
+- タスクの実行順序を決定
 
-#### 2. 計画のレビュー
+#### 3. 計画のレビュー
 - 不明確な要件や仕様の洗い出し
 - 必要に応じて `AskUserQuestion` で確認
 - **実装計画がADRの決定と一致しているか確認**
@@ -308,6 +359,7 @@ path: 'src/auth/login.ts'
 **完了チェックリスト:**
 - [ ] **Phase 1のADR確認が完了している**（必須）
 - [ ] UI変更がある場合、Phase 3が完了し承認を得ている
+- [ ] `specs/[feature-name]/tasks.md` を作成（タスクリスト、DoD、依存関係、テスト戦略）
 - [ ] TodoWriteで全タスクを登録
 - [ ] Phase 3で承認された改善案をタスクに含めた
 - [ ] **実装計画がADRの決定と一致している**
@@ -398,35 +450,6 @@ relative_path: 'src/auth/user.ts'
 - [ ] 日本語コメントで意図を説明
 - [ ] TodoWriteで進捗更新済み
 - [ ] 実装完了後、関連するADRを更新・追記（新しい決定が必要な場合）
-
----
-
-### Phase 6: Testing & Stories (テスト・ストーリー作成) 【推奨：ロジック変更時】
-
-**使用エージェント**: test-guideline-enforcer, storybook-story-creator
-
-**このフェーズをスキップできるケース:**
-- UI/表示のみの変更でロジック変更なし
-- 既存テストが十分にカバーしている場合
-- ドキュメントのみの変更
-
-#### 1. Storybook ストーリー作成
-- `storybook-story-creator` エージェントを使用
-- **条件分岐による表示切り替えのある場合のみ**ストーリーを作成
-- 単純なprops値の違いはストーリー化しない
-
-#### 2. テストコード作成
-- `test-guideline-enforcer` エージェントを使用
-- Vitest / React Testing Libraryで実装
-- AAAパターン（Arrange-Act-Assert）を厳守
-- 日本語のテストタイトル
-- すべての条件分岐をカバー
-
-**完了チェックリスト:**
-- [ ] 必要なストーリーを作成
-- [ ] テストコードがAAAパターンに準拠
-- [ ] すべての条件分岐をカバー
-- [ ] テストタイトルが日本語で明確
 
 ---
 
@@ -578,53 +601,6 @@ bun run build
 
 ---
 
-### Phase 10: Git Commit 【必須】
-
-**使用ツール**: Bash tool
-
-#### 1. 変更内容の確認
-```bash
-git status
-git diff
-```
-
-#### 2. コミット作成
-- 適切なコミットメッセージを作成（英語、簡潔に）
-- コミットメッセージフォーマット：`<type>: <description>`
-- type例：feat, fix, refactor, docs, test, style, chore
-
-```bash
-git add .
-git commit -m "feat: add new feature description"
-```
-
-**完了チェックリスト:**
-- [ ] git statusで意図しないファイルが含まれていない
-- [ ] コミットメッセージが適切
-- [ ] 変更内容が論理的にまとまっている
-
----
-
-### Phase 11: Push 【必須】
-
-**使用ツール**: Bash tool
-
-#### 1. リモートへプッシュ
-```bash
-git push origin <branch-name>
-```
-
-#### 2. 必要に応じてPR作成
-```bash
-gh pr create --title "PR title" --body "PR description"
-```
-
-**完了チェックリスト:**
-- [ ] プッシュが成功
-- [ ] 必要に応じてPR作成
-
----
-
 ## トラブルシューティング
 
 ### Phase 8でビルドエラーが発生
@@ -645,11 +621,6 @@ gh pr create --title "PR title" --body "PR description"
 3. 必要に応じて Phase 5 に戻って修正
 4. Phase 8, 9A, 9B を再実行
 
-### テストが失敗する
-1. テストエラーメッセージを確認
-2. 期待値と実際の値を比較
-3. Phase 5 または Phase 6 に戻って修正
-4. Phase 8 を再実行
 
 ---
 
