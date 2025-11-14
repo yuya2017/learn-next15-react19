@@ -1,0 +1,10 @@
+{
+  "enabledMcpjsonServers": [
+    "context7",
+    "serena",
+    "chrome-devtools",
+    "next-devtools",
+    "kiri"
+  ],
+  "enableAllProjectMcpServers": true
+}
