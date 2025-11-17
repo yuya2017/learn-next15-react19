@@ -1,10 +1,24 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(npm run dev:*)",
+      "mcp__next-devtools__nextjs_runtime",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__list_network_requests",
+      "mcp__chrome-devtools__hover",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__list_pages",
+      "Bash(npm run build:*)",
+      "mcp__chrome-devtools__navigate_page"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "context7",
     "serena",
     "chrome-devtools",
     "next-devtools",
     "kiri"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

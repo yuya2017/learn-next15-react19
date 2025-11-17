@@ -19,28 +19,26 @@ export function useTodoSearch() {
   const [filter, setFilter] = useState<TodoFilter>('all');
   const [sortKey, setSortKey] = useState<TodoSortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<TodoSortOrder>('desc');
-  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false); // 検索実行済みフラグ
   const queryClient = useQueryClient();
 
-  // useQueryで検索条件に応じてデータを取得（初期表示なし）
+  // useQueryで検索条件に応じてデータを取得
+  // 一度検索したら enabled: true になり、フィルター・ソート変更時に自動更新
   const {
     data: todos = [],
     isLoading,
     error,
-    refetch,
   } = useQuery({
     queryKey: ['todos-search', filter, sortKey, sortOrder],
     queryFn: () => searchTodosClient({ filter, sortKey, sortOrder }),
-    enabled: false, // 初期表示なし（パターン5）
+    enabled: hasSearched, // 一度検索したら以降は自動更新
     staleTime: 5 * 60 * 1000, // 5分間キャッシュ
   });
 
-  // 検索実行
+  // 検索実行 - invalidateQueriesでキャッシュを無効化して再取得
   const handleSearch = () => {
-    setIsSearching(true);
-    refetch().finally(() => {
-      setIsSearching(false);
-    });
+    setHasSearched(true); // 初回検索時にフラグをON（enabled: true になる）
+    queryClient.invalidateQueries({ queryKey: ['todos-search'] }); // キャッシュ無効化
   };
 
   // TODO作成のmutation
@@ -53,13 +51,8 @@ export function useTodoSearch() {
       return result.data;
     },
     onSuccess: async () => {
-      // キャッシュを無効化
+      // キャッシュを無効化してqueryKeyの変更により自動再取得
       await queryClient.invalidateQueries({ queryKey: ['todos-search'] });
-      // enabled: falseのクエリは明示的にrefetchする必要がある
-      // 検索結果が表示されている場合のみ再取得
-      if (todos.length > 0) {
-        await refetch();
-      }
       setTitle('');
       setErrorMessage(null);
     },
@@ -78,13 +71,8 @@ export function useTodoSearch() {
       return result.data;
     },
     onSuccess: async () => {
-      // キャッシュを無効化
+      // キャッシュを無効化してqueryKeyの変更により自動再取得
       await queryClient.invalidateQueries({ queryKey: ['todos-search'] });
-      // enabled: falseのクエリは明示的にrefetchする必要がある
-      // 検索結果が表示されている場合のみ再取得
-      if (todos.length > 0) {
-        await refetch();
-      }
       setErrorMessage(null);
     },
     onError: (error: Error) => {
@@ -130,7 +118,7 @@ export function useTodoSearch() {
     setSortKey,
     sortOrder,
     setSortOrder,
-    isLoading: isLoading || isSearching,
+    isLoading,
     error,
     handleSearch,
   };

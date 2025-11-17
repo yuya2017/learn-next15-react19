@@ -10,14 +10,17 @@ const navItems = [
   {
     href: '/todo',
     label: 'TODOプレイグラウンド',
+    prefetch: true,
   },
   {
     href: '/todo-filter',
     label: 'TODOフィルタ・ソート',
+    prefetch: true,
   },
   {
     href: '/todo-search',
     label: 'TODO検索',
+    prefetch: true,
   },
 ];
 
@@ -38,6 +41,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={item.prefetch}
               className={`block rounded-md px-3 py-2 text-sm transition-colors ${
                 isActive
                   ? 'bg-slate-100 font-medium text-slate-900'
