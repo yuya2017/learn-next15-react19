@@ -44,7 +44,7 @@
 1. **Phase 1: Investigation & Research** - Context7/Kiriで調査
 4. **Phase 4: Planning** - TodoWriteで計画立案
 5. **Phase 5: Implementation** - Serenaでコード実装
-8. **Phase 8: Quality Checks** - bun run でチェック実行
+8. **Phase 8: Quality Checks** - npm run でチェック実行
 9. **Phase 9A: Runtime Verification** - Next.js MCPで動作確認
 
 #### 状況に応じて実行（推奨）
@@ -506,16 +506,16 @@ relative_path: 'src/auth/user.ts'
 
 ```bash
 # 型チェック
-bun run type-check
+npm run type-check
 
 # Lint
-bun run lint
+npm run lint
 
 # テスト実行
-bun run test
+npm run test
 
 # ビルド確認
-bun run build
+npm run build
 ```
 
 #### 2. エラーの修正
@@ -546,7 +546,7 @@ bun run build
 
 1. **開発サーバー起動**
    ```bash
-   bun run dev
+   npm run dev
    ```
 
 2. **Next.js Runtime確認（必須）**
