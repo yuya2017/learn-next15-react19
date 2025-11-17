@@ -3,6 +3,8 @@
 このファイルは、Claude Codeを使用した開発ワークフローの標準手順を定義します。
 新機能の追加やバグ修正を行う際は、以下のフローに従ってください。
 
+**📖 プロジェクト概要**: 開発を始める前に **[PROJECT.md](./PROJECT.md)** を参照して、プロジェクトの技術スタック、アーキテクチャ設計、コーディング規約などの全体像を把握してください。
+
 ## 基本方針
 
 - **できるだけ全てのフェーズを実行する**（タイプ別の推奨フローは下記参照）
@@ -67,6 +69,10 @@
 ---
 
 ## Workflow Steps
+
+**⚠️ 開発開始前の準備**: 各フェーズを実行する前に、まず **[PROJECT.md](./PROJECT.md)** でプロジェクトの全体像（アーキテクチャ、設計原則、コーディング規約など）を把握してください。
+
+---
 
 ### Phase 1: Investigation & Research (調査フェーズ) 【必須】
 
@@ -626,6 +632,7 @@ bun run build
 
 ## 補足資料
 
+- **[PROJECT.md](./PROJECT.md)**: プロジェクトの全体概要、技術スタック、アーキテクチャ設計、コーディング規約
 - **[MCP_REFERENCE.md](./MCP_REFERENCE.md)**: Kiri MCP、Serena MCP、Next.js MCP、Chrome DevTools MCP、Browser Eval MCPの詳細なコマンドリファレンス
 
 ## MCP使い分けまとめ
