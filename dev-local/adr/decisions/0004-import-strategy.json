@@ -1,0 +1,210 @@
+{
+  "id": "ADR-0004",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "インポート戦略（バレルインポート禁止）の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js 15プロジェクトにおいて、モジュールのインポート方法が統一されていないと、ビルド時間の増加、tree-shakingの非効率化、依存関係の不明瞭化、デバッグの困難さなどの問題が発生する。特にバレルインポート（index.tsを経由したre-export）は、大規模プロジェクトでパフォーマンスとメンテナンス性に悪影響を及ぼす。",
+    "constraints": [
+      "Next.js 15 App Routerのビルド最適化",
+      "TypeScriptのパスエイリアス機能の活用",
+      "Fast Refresh（HMR）のパフォーマンス維持",
+      "Tree-shakingの効率化",
+      "開発者体験の向上（import文の可読性）"
+    ],
+    "requirements": [
+      "インポート方法を統一してコードの一貫性を確保",
+      "ビルド時間を最小化",
+      "依存関係を明確化",
+      "デバッグを容易にする",
+      "相対パスの深いネストを避ける",
+      "IDEのインポート補完機能との互換性"
+    ]
+  },
+  "decision": {
+    "summary": "バレルインポート（index.tsを経由したre-export）を禁止し、`@/`エイリアスを使用した個別インポートに統一する。相対パスは使用せず、すべてのインポートはtsconfig.jsonで定義された`@/`エイリアスを使用する。",
+    "details": "インポート戦略の詳細：\n\n1. **`@/`エイリアスを使用した個別インポート**\n   - tsconfig.jsonで`@/`を`./src`にマッピング\n   - すべてのインポートは`@/`エイリアスから始める\n   - ファイルを直接指定（例: `@/components/ui/Button`）\n\n2. **バレルインポート（index.ts）の禁止**\n   - `index.ts`を経由したre-exportは使用しない\n   - コンポーネントやユーティリティをindex.tsでまとめてexportしない\n   - 各ファイルを個別にインポート\n\n3. **相対パスの禁止**\n   - `../../`のような相対パスは使用しない\n   - すべて`@/`エイリアスを使用\n\n4. **命名規則**\n   - コンポーネントファイル: アッパーキャメルケース（例: `Button.tsx`）\n   - その他のファイル: キャメルケース（例: `fetchUser.ts`）\n\n5. **例外**\n   - Next.jsのapp/ディレクトリ内の特殊ファイル（page.tsx, layout.tsx, error.tsx等）は除く\n   - node_modules内のライブラリは通常のインポート（例: `import React from 'react'`）",
+    "alternatives": [
+      {
+        "option": "バレルインポート（index.ts）を使用",
+        "pros": [
+          "インポート文が短くなる（例: `import { Button, Input } from '@/components'`）",
+          "エクスポートするモジュールを一箇所で管理できる",
+          "公開APIを明示的に定義できる"
+        ],
+        "cons": [
+          "ビルド時間が増加（index.tsの変更で関連するすべてのファイルが再ビルド）",
+          "Tree-shakingが非効率（未使用のモジュールもバンドルに含まれる可能性）",
+          "Fast Refreshのパフォーマンス低下（index.tsの変更で広範囲に影響）",
+          "循環依存のリスクが高い",
+          "依存関係が不明瞭（どのファイルをインポートしているか不明）",
+          "デバッグが困難（スタックトレースでindex.tsが表示される）",
+          "大規模プロジェクトでメモリ使用量が増加"
+        ],
+        "rejected": true,
+        "reason": "Next.js 15のビルド最適化とFast Refreshのパフォーマンスを最大化するため、バレルインポートは避けるべき。特に大規模プロジェクトではビルド時間とメモリ使用量の増加が顕著。"
+      },
+      {
+        "option": "相対パスのみを使用",
+        "pros": [
+          "追加設定不要（tsconfig.jsonの設定不要）",
+          "ファイルの物理的な位置関係が明確"
+        ],
+        "cons": [
+          "深いネスト時のパスが長く読みにくい（例: `../../../components/ui/Button`）",
+          "ファイル移動時に多数のインポート文を修正する必要がある",
+          "タイプミスのリスクが高い",
+          "IDEの補完機能が活用しにくい"
+        ],
+        "rejected": true,
+        "reason": "相対パスは深いネスト時に可読性が低下し、ファイル移動時の保守性が悪い。`@/`エイリアスを使用することで、これらの問題を解決できる。"
+      },
+      {
+        "option": "複数のエイリアス（@components, @hooks, @utils等）を使用",
+        "pros": [
+          "インポート元のディレクトリが明確",
+          "より短いインポート文"
+        ],
+        "cons": [
+          "tsconfig.jsonの設定が複雑",
+          "新しいディレクトリ追加時にエイリアスも追加が必要",
+          "エイリアスの命名規則が必要",
+          "学習コストが高い（どのエイリアスが使えるか覚える必要）"
+        ],
+        "rejected": true,
+        "reason": "複数のエイリアスは設定が複雑で、学習コストが高い。`@/`のみを使用することでシンプルかつ一貫性のあるインポート戦略を維持できる。"
+      }
+    ],
+    "rationale": "`@/`エイリアスを使用した個別インポート戦略を採用することで、以下のメリットを享受できる：\n\n1. **ビルド時間の短縮**: バレルインポートを避けることで、ファイル変更時の再ビルド範囲を最小化\n2. **Tree-shakingの効率化**: 個別インポートにより、未使用のモジュールを確実に除外\n3. **依存関係の明確化**: どのファイルをインポートしているかが一目瞭然\n4. **デバッグのしやすさ**: スタックトレースで正確なファイルパスが表示される\n5. **Fast Refreshの最適化**: 変更の影響範囲を最小化し、HMRのパフォーマンスを向上\n6. **保守性の向上**: ファイル移動時にインポートパスの修正が容易（`@/`から始まるパスは変わらない）\n7. **一貫性の確保**: すべてのインポートが`@/`から始まることで、コードの統一感を維持\n8. **循環依存の回避**: 個別インポートにより、循環依存のリスクを低減",
+    "consequences": [
+      "【メリット】ビルド時間が短縮され、開発体験が向上",
+      "【メリット】Tree-shakingが効率化され、バンドルサイズが削減",
+      "【メリット】依存関係が明確で、コードレビューが容易",
+      "【メリット】デバッグ時にスタックトレースで正確なファイルパスが表示",
+      "【メリット】Fast Refreshのパフォーマンスが向上",
+      "【メリット】ファイル移動時のリファクタリングが容易",
+      "【メリット】循環依存のリスクが低減",
+      "【デメリット】インポート文が長くなる場合がある（例: `import { Button } from '@/components/ui/Button'`）",
+      "【デメリット】複数のコンポーネントを同時にインポートする場合、複数のimport文が必要",
+      "【デメリット】バレルインポートに慣れた開発者には学習コストが発生",
+      "【対応策】IDEのインポート補完機能を活用することで、長いパスの入力を軽減",
+      "【対応策】ESLintのimport順序ルールを設定し、import文を自動整理"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "tsconfig.json",
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      ".eslintrc.json"
+    ],
+    "affected_components": [
+      "All components",
+      "All custom hooks",
+      "All utility functions",
+      "All Server Actions",
+      "All API clients",
+      "All types and schemas"
+    ],
+    "code_patterns": [
+      "良い例: import { Button } from '@/components/ui/Button'",
+      "良い例: import { fetchUser } from '@/apis/user.server'",
+      "良い例: import { UserSchema } from '@/schemas/userSchema'",
+      "悪い例: import { Button } from '@/components' // index.tsを経由",
+      "悪い例: import { Button } from '../../components/ui/Button' // 相対パス",
+      "悪い例: import { Button, Input, Select } from '@/components/ui' // バレルインポート"
+    ],
+    "examples": [
+      {
+        "file": "tsconfig.json",
+        "line_start": 1,
+        "line_end": 20,
+        "description": "tsconfig.jsonでの@/エイリアス設定:\n{\n  \"compilerOptions\": {\n    \"baseUrl\": \".\",\n    \"paths\": {\n      \"@/*\": [\"./src/*\"]\n    }\n  }\n}"
+      },
+      {
+        "file": "src/app/(private)/todo/page.tsx",
+        "line_start": 1,
+        "line_end": 10,
+        "description": "良い例 - @/エイリアスを使用した個別インポート:\nimport { TodoList } from '@/app/(private)/todo/components/TodoList'\nimport { Button } from '@/components/ui/Button'\nimport { fetchTodos } from '@/apis/todos.server'\nimport { TodoSchema } from '@/schemas/todoSchema'\n\nexport default async function TodoPage() {\n  const todos = await fetchTodos()\n  return <TodoList todos={todos} />\n}"
+      },
+      {
+        "file": "src/components/index.ts (ANTI-PATTERN)",
+        "line_start": 1,
+        "line_end": 10,
+        "description": "悪い例 - バレルインポート（禁止）:\n// ❌ このようなindex.tsは作成しない\nexport { Button } from './ui/Button'\nexport { Input } from './ui/Input'\nexport { Select } from './ui/Select'\n\n// ❌ これを使用するインポートも禁止\nimport { Button, Input, Select } from '@/components'"
+      },
+      {
+        "file": "src/app/(private)/todo/components/TodoList.tsx",
+        "line_start": 1,
+        "line_end": 5,
+        "description": "悪い例 - 相対パスを使用（禁止）:\n// ❌ 相対パスは使用しない\nimport { Button } from '../../../../components/ui/Button'\n\n// ✅ @/エイリアスを使用\nimport { Button } from '@/components/ui/Button'"
+      },
+      {
+        "file": ".eslintrc.json",
+        "line_start": 1,
+        "line_end": 15,
+        "description": "ESLintでのインポート順序設定（推奨）:\n{\n  \"plugins\": [\"import\"],\n  \"rules\": {\n    \"import/order\": [\n      \"error\",\n      {\n        \"groups\": [\"builtin\", \"external\", \"internal\", \"parent\", \"sibling\", \"index\"],\n        \"pathGroups\": [\n          {\n            \"pattern\": \"@/**\",\n            \"group\": \"internal\"\n          }\n        ],\n        \"alphabetize\": { \"order\": \"asc\" }\n      }\n    ]\n  }\n}"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "import-strategy",
+      "barrel-import",
+      "path-alias",
+      "typescript",
+      "nextjs",
+      "build-optimization",
+      "tree-shaking",
+      "fast-refresh",
+      "developer-experience",
+      "code-standards",
+      "maintainability",
+      "performance"
+    ],
+    "related_adrs": ["ADR-0001", "ADR-0002"],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "インポート戦略",
+    "import strategy",
+    "バレルインポート",
+    "barrel import",
+    "index.ts",
+    "re-export",
+    "パスエイリアス",
+    "path alias",
+    "@/ alias",
+    "個別インポート",
+    "individual import",
+    "相対パス",
+    "relative path",
+    "absolute path",
+    "絶対パス",
+    "tsconfig.json",
+    "paths",
+    "tree-shaking",
+    "ツリーシェイキング",
+    "ビルド最適化",
+    "build optimization",
+    "Fast Refresh",
+    "HMR",
+    "Hot Module Replacement",
+    "循環依存",
+    "circular dependency",
+    "依存関係",
+    "dependency",
+    "コーディング規約",
+    "coding standards",
+    "保守性",
+    "maintainability",
+    "デバッグ",
+    "debugging",
+    "スタックトレース",
+    "stack trace"
+  ],
+  "vector_embedding": null
+}

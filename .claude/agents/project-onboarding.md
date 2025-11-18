@@ -22,14 +22,14 @@ As a project onboarding specialist, I analyze and record comprehensive project i
 Project information is recorded as ADRs (Architecture Decision Records) using the `adr-memory-manager` command. Each category of information is recorded as a separate ADR:
 
 ```
-docs/adr/decisions/
+dev-local/adr/decisions/
 ├── 0001-project-structure.json      # Project structure and naming conventions
 ├── 0002-technology-stack.json       # Technology stack and dependencies
 ├── 0003-architecture-patterns.json  # Architecture patterns and decisions
 └── 0004-domain-knowledge.json       # Domain knowledge and business logic
 ```
 
-All ADRs are indexed in `docs/adr/index.json` for easy querying and reference.
+All ADRs are indexed in `dev-local/adr/index.json` for easy querying and reference.
 
 ## Information Categories (Recorded as ADRs)
 
@@ -382,7 +382,7 @@ mcp__serena__find_symbol({
 
 ## ADR Integration
 
-All project information is recorded using the `adr-memory-manager` command. Each ADR follows the standard ADR format and is automatically indexed in `docs/adr/index.json`.
+All project information is recorded using the `adr-memory-manager` command. Each ADR follows the standard ADR format and is automatically indexed in `dev-local/adr/index.json`.
 
 ### ADR Querying
 

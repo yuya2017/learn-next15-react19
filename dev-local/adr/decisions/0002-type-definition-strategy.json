@@ -1,0 +1,164 @@
+{
+  "id": "ADR-0002",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "型定義戦略（typeで統一）の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "TypeScriptで型を定義する際、`type`と`interface`のどちらを使用するか、またプロジェクト全体で一貫性をどのように保つか",
+    "constraints": [
+      "TypeScriptの型システムを最大限活用する必要がある",
+      "チームメンバーが一貫したコーディングスタイルで開発できる必要がある",
+      "将来的な拡張性と保守性を考慮する必要がある",
+      "コードレビューの効率化と認知負荷の軽減が必要"
+    ],
+    "requirements": [
+      "プロジェクト全体で統一された型定義スタイル",
+      "Union型やIntersection型の柔軟な使用",
+      "型定義の再利用性と拡張性",
+      "明確なコーディング規約"
+    ]
+  },
+  "decision": {
+    "summary": "プロジェクト全体で型定義は`type`に統一する。`interface`は使用しない。",
+    "details": "TypeScriptにおける型定義は、すべて`type`キーワードを使用して定義する。これにより、プロジェクト全体で一貫性のある型定義スタイルを実現し、Union型やIntersection型を柔軟に使用できるようにする。`interface`は原則として使用せず、すべての型定義を`type`で統一する。",
+    "alternatives": [
+      {
+        "option": "interface を使用する",
+        "pros": [
+          "オブジェクト型の定義に特化している",
+          "Declaration Merging（宣言のマージ）が可能",
+          "extendsキーワードで継承が直感的",
+          "エラーメッセージが読みやすい場合がある"
+        ],
+        "cons": [
+          "Union型やIntersection型を定義できない",
+          "Primitive型やTuple型を定義できない",
+          "typeとの使い分けが必要になり、認知負荷が増加",
+          "Declaration Mergingは予期せぬ型の結合を引き起こす可能性がある"
+        ],
+        "rejected": true,
+        "reason": "Union型やIntersection型が使用できないため、柔軟性に欠ける。また、typeとinterfaceの使い分けを覚える必要があり、チームの認知負荷が増加する。"
+      },
+      {
+        "option": "用途によって使い分ける（interfaceはオブジェクト型、typeはそれ以外）",
+        "pros": [
+          "それぞれの特性を活かせる",
+          "TypeScriptの公式ドキュメントに従っている"
+        ],
+        "cons": [
+          "使い分けのルールを覚える必要がある",
+          "コードレビュー時に使い分けが適切かを確認する手間が増える",
+          "新規メンバーのオンボーディングコストが増加",
+          "プロジェクト全体の一貫性が損なわれる可能性"
+        ],
+        "rejected": true,
+        "reason": "使い分けのルールを徹底するのは困難であり、コードレビューやオンボーディングのコストが増加する。また、プロジェクトの規模が大きくなるにつれて一貫性を保つのが難しくなる。"
+      }
+    ],
+    "rationale": "typeで統一することで、以下のメリットが得られる：\n1. 一貫性: プロジェクト全体で統一された型定義スタイル\n2. 柔軟性: Union型、Intersection型、Mapped Type、Conditional Typeなど、すべての型表現が可能\n3. シンプルさ: 使い分けのルールが不要で、認知負荷が低い\n4. 保守性: コードレビューが簡素化され、新規メンバーのオンボーディングも容易\n5. 拡張性: 将来的な型定義の拡張にも柔軟に対応可能",
+    "consequences": [
+      "プロジェクト全体で一貫した型定義スタイルが実現される",
+      "Union型やIntersection型を自由に使用できる",
+      "コードレビュー時に型定義スタイルの確認が不要になる",
+      "新規メンバーのオンボーディングが簡素化される",
+      "既存のinterfaceを使用したコードがある場合は、typeに移行する必要がある",
+      "Declaration Mergingが必要なケース（ライブラリの型拡張など）では、例外的にinterfaceを使用する可能性がある（極めて稀）"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "src/types/**/*.ts",
+      "src/app/**/types/*.ts",
+      "src/schemas/**/*.ts",
+      "src/components/**/*.tsx",
+      "src/hooks/**/*.ts",
+      "src/actions/**/*.ts",
+      "src/apis/**/*.ts"
+    ],
+    "affected_components": [
+      "All components",
+      "Custom hooks",
+      "Server Actions",
+      "API clients",
+      "Utility functions",
+      "Schema definitions"
+    ],
+    "code_patterns": [
+      "type定義（基本）",
+      "type定義（Union型）",
+      "type定義（Intersection型）",
+      "type定義（Mapped Type）",
+      "type定義（Conditional Type）"
+    ],
+    "examples": [
+      {
+        "file": "良い例: typeを使用した基本的な型定義",
+        "line_start": 1,
+        "line_end": 20,
+        "description": "// 良い例: typeを使用した基本的な型定義\ntype User = {\n  id: string;\n  name: string;\n  email: string;\n  age?: number;\n};\n\n// 良い例: Union型を使用\ntype Status = 'pending' | 'approved' | 'rejected';\n\n// 良い例: Intersection型を使用\ntype AdminUser = User & {\n  role: 'admin';\n  permissions: string[];\n};\n\n// 良い例: Mapped Typeを使用\ntype ReadonlyUser = Readonly<User>;\n\n// 良い例: Conditional Typeを使用\ntype IsString<T> = T extends string ? true : false;"
+      },
+      {
+        "file": "悪い例: interfaceを使用した型定義",
+        "line_start": 1,
+        "line_end": 15,
+        "description": "// 悪い例: interfaceを使用（禁止）\ninterface User {\n  id: string;\n  name: string;\n  email: string;\n  age?: number;\n}\n\n// 悪い例: interfaceで継承（禁止）\ninterface AdminUser extends User {\n  role: 'admin';\n  permissions: string[];\n}\n\n// ⚠️ プロジェクトでは上記のようなinterfaceは使用せず、すべてtypeで定義する"
+      },
+      {
+        "file": "良い例: Propsの型定義",
+        "line_start": 1,
+        "line_end": 15,
+        "description": "// 良い例: Reactコンポーネントのpropsをtypeで定義\ntype UserCardProps = {\n  user: User;\n  onEdit?: (userId: string) => void;\n  className?: string;\n};\n\nexport default function UserCard({ user, onEdit, className }: UserCardProps) {\n  // ...\n}\n\n// 良い例: Server Actionsの引数と戻り値をtypeで定義\ntype CreateUserInput = {\n  name: string;\n  email: string;\n};\n\ntype CreateUserResult = Result<User>;\n\nexport async function createUser(input: CreateUserInput): Promise<CreateUserResult> {\n  // ...\n}"
+      },
+      {
+        "file": "良い例: Result型の定義（エラーハンドリング）",
+        "line_start": 1,
+        "line_end": 15,
+        "description": "// 良い例: Result型をtypeで定義\ntype SuccessResult<T> = {\n  isSuccess: true;\n  data: T;\n};\n\ntype ErrorResult = {\n  isSuccess: false;\n  errorMessage: string;\n};\n\nexport type Result<S> = SuccessResult<S> | ErrorResult;\n\n// 使用例\ntype FetchUserResult = Result<User>;\n\nconst result: FetchUserResult = await fetchUser(userId);\nif (result.isSuccess) {\n  console.log(result.data.name);\n} else {\n  console.error(result.errorMessage);\n}"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "typescript",
+      "type-definition",
+      "coding-standards",
+      "type",
+      "interface",
+      "union-type",
+      "intersection-type",
+      "consistency",
+      "code-review"
+    ],
+    "related_adrs": [
+      "ADR-0001"
+    ],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "型定義",
+    "type definition",
+    "type",
+    "interface",
+    "typescript",
+    "Union型",
+    "union type",
+    "Intersection型",
+    "intersection type",
+    "Mapped Type",
+    "Conditional Type",
+    "型安全性",
+    "type safety",
+    "コーディング規約",
+    "coding standards",
+    "一貫性",
+    "consistency",
+    "型推論",
+    "type inference",
+    "ジェネリクス",
+    "generics"
+  ],
+  "vector_embedding": null
+}

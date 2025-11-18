@@ -1,0 +1,339 @@
+{
+  "id": "ADR-0005",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "キャッシュ戦略（Cache Components）の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js 15から16への移行に伴い、キャッシュ戦略が根本的に変更された。Next.js 15以前は「デフォルトでキャッシュ」だったが、Next.js 16では「デフォルトで動的」となり、必要な部分のみ明示的にキャッシュする必要がある。この新しいモデルに対応したキャッシュ戦略を定義する必要がある。",
+    "constraints": [
+      "Next.js 16の新しいキャッシュモデルに準拠する必要がある",
+      "古いデータ表示やUI/DB状態の不整合を防ぐ必要がある",
+      "パフォーマンスと新鮮さのバランスを取る必要がある",
+      "開発者が明示的にキャッシュを制御できる必要がある",
+      "Data Cache（legacy）は非推奨となる"
+    ],
+    "requirements": [
+      "デフォルトで動的レンダリング",
+      "明示的なキャッシュ制御",
+      "キャッシュレイヤーの優先順位の明確化",
+      "データの性質に応じた適切なキャッシュ期間の設定",
+      "キャッシュの無効化（revalidation）戦略の定義"
+    ]
+  },
+  "decision": {
+    "summary": "Next.js 16の新しいキャッシュモデルに従い、「動的がデフォルト、必要な部分を明示的にキャッシュ」する戦略を採用する。Component Cacheを最優先に使用し、`use cache`ディレクティブと`cacheLife`プロファイルで細かく制御する。",
+    "details": "全てのページとコンポーネントはデフォルトで動的レンダリングとし、キャッシュが必要な部分のみ`use cache`ディレクティブを使用してキャッシュを有効化する。キャッシュ期間は`cacheLife`プロファイル（seconds, minutes, hours, days）で制御し、データの性質に応じて適切なプロファイルを選択する。動的データは`Suspense`でラップしてストリーミングすることで、静的部分と動的部分を分離する。Data Cache（legacy）は非推奨とし、Component Cacheに移行する。",
+    "alternatives": [
+      {
+        "option": "全てをキャッシュする（Next.js 14以前のデフォルト）",
+        "pros": [
+          "パフォーマンスが良い",
+          "実装がシンプル"
+        ],
+        "cons": [
+          "古いデータが表示される可能性が高い",
+          "UI/DB状態の不整合が発生しやすい",
+          "キャッシュの制御が難しい",
+          "Next.js 16のベストプラクティスに反する"
+        ],
+        "rejected": true,
+        "reason": "Next.js 16では「デフォルトで動的」が推奨されており、古いデータ表示の問題を避けるため不採用"
+      },
+      {
+        "option": "Data Cacheを継続使用",
+        "pros": [
+          "Next.js 15以前の実装を維持できる",
+          "移行コストが低い"
+        ],
+        "cons": [
+          "Data Cacheはlegacy機能で非推奨",
+          "Next.js 16の新機能を活用できない",
+          "将来的に削除される可能性がある",
+          "より細かいキャッシュ制御ができない"
+        ],
+        "rejected": true,
+        "reason": "Data CacheはNext.js 16では非推奨となり、Component Cacheへの移行が推奨されているため不採用"
+      },
+      {
+        "option": "キャッシュを一切使わない",
+        "pros": [
+          "常に最新のデータを表示できる",
+          "実装がシンプル",
+          "キャッシュの制御が不要"
+        ],
+        "cons": [
+          "パフォーマンスが悪化する",
+          "サーバー負荷が高くなる",
+          "ユーザー体験が低下する",
+          "Next.js 16の最適化機能を活用できない"
+        ],
+        "rejected": true,
+        "reason": "パフォーマンスとユーザー体験を犠牲にするため不採用。適切なキャッシュ戦略でバランスを取る"
+      }
+    ],
+    "rationale": "Next.js 16の新しいキャッシュモデルは、「明示的なキャッシュ制御」により、開発者がキャッシュの範囲と期間を細かく制御できるようになった。これにより、古いデータ表示の問題を防ぎつつ、必要な部分だけをキャッシュすることでパフォーマンスを最適化できる。Component Cacheは関数・コンポーネント単位でキャッシュできるため、Data Cacheよりも柔軟で細かい制御が可能。また、`cacheLife`プロファイルにより、データの性質に応じた適切なキャッシュ期間を簡単に設定できる。",
+    "consequences": [
+      "デフォルトで動的レンダリングされるため、初回表示は少し遅くなる可能性がある（キャッシュ有効化で改善）",
+      "キャッシュの制御が明示的になり、コードの可読性が向上する",
+      "古いデータ表示の問題が減少し、UI/DB状態の不整合が防げる",
+      "Component Cacheへの移行により、より細かいキャッシュ制御が可能になる",
+      "開発者がキャッシュの範囲と期間を意識する必要がある",
+      "Next.js 16のベストプラクティスに準拠した実装になる",
+      "Data Cache（legacy）からの移行コストが発生する"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "app/**/page.tsx",
+      "app/**/layout.tsx",
+      "components/**/*.tsx",
+      "actions/**/*.ts",
+      "next.config.ts",
+      "cacheLife.config.ts"
+    ],
+    "affected_components": [
+      "All Server Components",
+      "All Page components",
+      "All Layout components",
+      "Cache Components",
+      "Data fetching functions",
+      "Server Actions"
+    ],
+    "code_patterns": [
+      "use cache",
+      "cacheLife",
+      "cacheTag",
+      "updateTag",
+      "revalidateTag",
+      "Suspense"
+    ],
+    "examples": [
+      {
+        "file": "examples/cache-static-content.tsx",
+        "description": "静的コンテンツのキャッシュ例（days）",
+        "code": "// 1日キャッシュする静的コンテンツ\nexport async function StaticContent() {\n  'use cache';\n  cacheLife('days');\n  cacheTag('static-content');\n\n  const data = await fetchStaticData();\n  return <div>{data}</div>;\n}"
+      },
+      {
+        "file": "examples/cache-product-list.tsx",
+        "description": "商品一覧のキャッシュ例（hours）",
+        "code": "// 1時間キャッシュする商品一覧\nexport async function ProductList() {\n  'use cache';\n  cacheLife('hours');\n  cacheTag('products');\n\n  const products = await fetchProducts();\n  return (\n    <ul>\n      {products.map(p => <li key={p.id}>{p.name}</li>)}\n    </ul>\n  );\n}"
+      },
+      {
+        "file": "examples/cache-user-profile.tsx",
+        "description": "ユーザープロフィールのキャッシュ例（minutes）",
+        "code": "// 5分キャッシュするユーザープロフィール\nexport async function UserProfile({ userId }: { userId: string }) {\n  'use cache';\n  cacheLife('minutes');\n  cacheTag('user', `user-${userId}`);\n\n  const user = await fetchUser(userId);\n  return <div>{user.name}</div>;\n}"
+      },
+      {
+        "file": "examples/cache-realtime-data.tsx",
+        "description": "リアルタイムデータのキャッシュ例（seconds）",
+        "code": "// 5秒キャッシュするリアルタイムデータ\nexport async function RealtimeData() {\n  'use cache';\n  cacheLife('seconds');\n  cacheTag('realtime');\n\n  const data = await fetchRealtimeData();\n  return <div>{data}</div>;\n}"
+      },
+      {
+        "file": "examples/cache-update-tag.tsx",
+        "description": "updateTagでキャッシュを即座に無効化",
+        "code": "// Server Action内でキャッシュを即座に無効化\nimport { updateTag } from 'next/cache';\n\nexport async function updateProduct(id: string, data: ProductData) {\n  await saveProduct(id, data);\n  // ユーザー操作直後に即座に反映が必要\n  updateTag('products', `product-${id}`);\n}"
+      },
+      {
+        "file": "examples/cache-revalidate-tag.tsx",
+        "description": "revalidateTagで次回リクエスト時に無効化",
+        "code": "// Server Action内で次回リクエスト時に無効化\nimport { revalidateTag } from 'next/cache';\n\nexport async function updateStaticContent(id: string, data: ContentData) {\n  await saveContent(id, data);\n  // 次回リクエスト時の反映で問題ない\n  revalidateTag('static-content', `content-${id}`);\n}"
+      },
+      {
+        "file": "examples/cache-suspense-separation.tsx",
+        "description": "Suspenseで動的部分と静的部分を分離",
+        "code": "// 動的部分をSuspenseでラップして分離\nexport default function Page() {\n  return (\n    <div>\n      <StaticHeader /> {/* キャッシュされた静的部分 */}\n      <Suspense fallback={<Loading />}>\n        <DynamicContent /> {/* 動的部分 */}\n      </Suspense>\n    </div>\n  );\n}\n\nasync function StaticHeader() {\n  'use cache';\n  cacheLife('days');\n  const data = await fetchStaticData();\n  return <header>{data}</header>;\n}\n\nasync function DynamicContent() {\n  // キャッシュなし（動的レンダリング）\n  const data = await fetchDynamicData();\n  return <div>{data}</div>;\n}"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "cache-strategy",
+      "component-cache",
+      "use-cache",
+      "cacheLife",
+      "cacheTag",
+      "updateTag",
+      "revalidateTag",
+      "nextjs",
+      "nextjs-16",
+      "performance",
+      "optimization",
+      "data-freshness",
+      "suspense",
+      "streaming",
+      "dynamic-rendering",
+      "static-rendering",
+      "server-components",
+      "data-cache-legacy",
+      "request-memoization",
+      "tanstack-query",
+      "router-cache"
+    ],
+    "related_adrs": [
+      "ADR-0003",
+      "ADR-0007",
+      "ADR-0008"
+    ],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "キャッシュ戦略",
+    "cache strategy",
+    "Component Cache",
+    "use cache",
+    "cacheLife",
+    "cacheTag",
+    "updateTag",
+    "revalidateTag",
+    "動的レンダリング",
+    "dynamic rendering",
+    "静的レンダリング",
+    "static rendering",
+    "キャッシュ制御",
+    "cache control",
+    "キャッシュ期間",
+    "cache duration",
+    "キャッシュ無効化",
+    "cache invalidation",
+    "データの新鮮さ",
+    "data freshness",
+    "パフォーマンス最適化",
+    "performance optimization",
+    "Suspense",
+    "ストリーミング",
+    "streaming",
+    "Server Components",
+    "Data Cache",
+    "legacy",
+    "Request Memoization",
+    "TanStack Query",
+    "Router Cache",
+    "seconds",
+    "minutes",
+    "hours",
+    "days",
+    "Next.js 16",
+    "古いデータ",
+    "stale data",
+    "UI/DB不整合",
+    "state inconsistency"
+  ],
+  "cache_layers": {
+    "request_memoization": {
+      "location": "server",
+      "purpose": "同一レンダー内の重複fetch排除",
+      "duration": "レンダー中のみ",
+      "control": "自動（制御不可）",
+      "priority": "automatic"
+    },
+    "component_cache": {
+      "location": "server",
+      "purpose": "コンポーネント/関数のキャッシュ",
+      "duration": "設定による（seconds/minutes/hours/days）",
+      "control": "use cache + cacheLife",
+      "priority": "high",
+      "recommended": true
+    },
+    "data_cache_legacy": {
+      "location": "server",
+      "purpose": "サーバーフェッチの結果をキャッシュ",
+      "duration": "永続的",
+      "control": "next.revalidate, revalidateTag",
+      "priority": "low",
+      "deprecated": true
+    },
+    "tanstack_query_cache": {
+      "location": "client",
+      "purpose": "クライアントフェッチの結果をキャッシュ",
+      "duration": "設定による",
+      "control": "staleTime, gcTime, invalidateQueries",
+      "priority": "medium"
+    },
+    "router_cache": {
+      "location": "client",
+      "purpose": "ページ遷移時のキャッシュ",
+      "duration": "セッション中",
+      "control": "next.configのstaleTimes",
+      "priority": "automatic"
+    }
+  },
+  "cacheLife_profiles": {
+    "seconds": {
+      "duration": "5秒",
+      "use_cases": [
+        "ほぼリアルタイム",
+        "高頻度更新データ",
+        "リアルタイムダッシュボード",
+        "株価、為替レート",
+        "チャット、通知"
+      ]
+    },
+    "minutes": {
+      "duration": "5分",
+      "use_cases": [
+        "ユーザー固有データ",
+        "中頻度更新データ",
+        "ユーザープロフィール",
+        "ショッピングカート",
+        "検索結果"
+      ]
+    },
+    "hours": {
+      "duration": "1時間",
+      "use_cases": [
+        "半動的データ",
+        "商品一覧",
+        "記事一覧",
+        "カテゴリマスタ",
+        "ニュースフィード"
+      ]
+    },
+    "days": {
+      "duration": "1日",
+      "use_cases": [
+        "マスタデータ",
+        "静的コンテンツ",
+        "利用規約",
+        "FAQ",
+        "固定ページ"
+      ]
+    }
+  },
+  "update_strategies": {
+    "updateTag": {
+      "timing": "即座",
+      "use_cases": [
+        "ユーザー操作直後に即座に反映が必要",
+        "商品の購入直後",
+        "記事の公開直後",
+        "プロフィール更新直後"
+      ],
+      "example": "updateTag('products', `product-${id}`)"
+    },
+    "revalidateTag": {
+      "timing": "次回リクエスト時",
+      "use_cases": [
+        "次回リクエスト時の反映で問題ない",
+        "管理画面での設定変更",
+        "バッチ処理での更新",
+        "定期的なコンテンツ更新"
+      ],
+      "example": "revalidateTag('static-content', `content-${id}`)"
+    }
+  },
+  "best_practices": [
+    "デフォルトは動的レンダリングとし、必要な部分のみキャッシュする",
+    "cacheLifeプロファイルはデータの更新頻度に応じて選択する",
+    "cacheTagを使ってキャッシュを細かく管理する",
+    "動的部分はSuspenseでラップしてストリーミングする",
+    "updateTagは即座に反映が必要な場合のみ使用する",
+    "revalidateTagは次回リクエスト時の反映で問題ない場合に使用する",
+    "Component Cacheを優先し、Data Cache（legacy）は使用しない",
+    "キャッシュの制御を誤ると古いデータ表示やUI/DB不整合が発生するため慎重に",
+    "ユーザー固有データは適切なキャッシュ戦略（minutes）を選択する",
+    "静的コンテンツは長期キャッシュ（days）を活用する"
+  ]
+}

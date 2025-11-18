@@ -277,7 +277,7 @@ export function UserEditForm({ userId, initialName }: Props) {
 
 ## 予期せぬエラーのハンドリング
 
-想定済みのエラーはResult型やuseQueryで処理できますが、予期せぬエラー（予想外の例外、バグなど）は別の方法で対処する必要があります。Next.js 15では、 `error.tsx` と `global-error.tsx` を使ったError Boundary機能が用意されています。
+想定済みのエラーはResult型やuseQueryで処理できますが、予期せぬエラー（予想外の例外、バグなど）は別の方法で対処する必要があります。Next.js 16では、 `error.tsx` と `global-error.tsx` を使ったError Boundary機能が用意されています。
 
 ### error.tsxの役割
 

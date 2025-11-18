@@ -3,7 +3,9 @@
 このファイルは、Claude Codeを使用した開発ワークフローの標準手順を定義します。
 新機能の追加やバグ修正を行う際は、以下のフローに従ってください。
 
-**📖 プロジェクト概要**: 開発を始める前に **[frontend-rules.md](./docs/frontend-rules.md)** を参照して、プロジェクトの技術スタック、アーキテクチャ設計、コーディング規約などの全体像を把握してください。
+**📘 ADR（Architecture Decision Records）**: 開発を始める前に **[dev-local/adr/](./dev-local/adr/)** ディレクトリのADRを参照して、プロジェクトの重要なアーキテクチャ決定を把握してください。特にPhase 1（調査フェーズ）でADR確認が必須です。
+
+**📖 開発者向けガイド**: 人間の開発者向けの包括的なガイドラインは **[frontend-rules.md](./docs/frontend-rules.md)** を参照してください。
 
 ## 基本方針
 
@@ -70,7 +72,9 @@
 
 ## Workflow Steps
 
-**⚠️ 開発開始前の準備**: 各フェーズを実行する前に、まず **[PROJECT.md](./PROJECT.md)** でプロジェクトの全体像（アーキテクチャ、設計原則、コーディング規約など）を把握してください。
+**⚠️ 開発開始前の準備**: 各フェーズを実行する前に、以下を確認してください：
+- **[dev-local/adr/](./dev-local/adr/)**: 重要なアーキテクチャ決定（Phase 1で必須確認）
+- **[PROJECT.md](./PROJECT.md)**: プロジェクトの全体像
 
 ---
 
@@ -132,21 +136,20 @@ path: 'src/auth/login.ts'
 - **コード調査だけでは不十分**: `codebase_search`やKiri MCPで既存パターンを確認しても、ADR確認は別途必須
 - **実装前に必ず確認**: 既存のアーキテクチャ決定に従うか、新しい決定が必要かを判断
 - **ADR確認方法**:
-  1. `docs/adr/index.json`を確認して関連ADRを特定
-  2. 関連するADRファイル（`docs/adr/decisions/*.json`）を読み込む
+  1. `dev-local/adr/index.json`を確認して関連ADRを特定
+  2. 関連するADRファイル（`dev-local/adr/decisions/*.json`）を読み込む
   3. 特に以下のADRを確認:
-     - **ADR-0003**: アーキテクチャパターン（Server Components、Client Components、Props-based controlなど）
-     - **ADR-0004**: ドメイン知識（コンポーネントレジストリの構造、Props定義、**Demo実装の必要性**など）
-       - **重要**: ADR-0004には「Demo」がドメインエンティティとして含まれており、新規コンポーネント作成時はデモ実装が必須
-       - `affected_files`に`demo-registry.ts`が含まれていることを確認
-       - `affected_components`に「Demo components」が含まれていることを確認
-     - **ADR-0001**: プロジェクト構造（ディレクトリ構造、命名規則など）
-  4. **ADR-0004の確認事項（新規コンポーネント作成時）**:
-     - デモコンポーネントの実装が必要か確認
-     - `demo-registry.ts`への登録が必要か確認
-     - `components.ts`への`ComponentConfig`追加が必要か確認
-  5. 実装がADRの決定と一致しているか確認
-  6. 新しい決定が必要な場合は`adr-memory-manager`エージェントを使用して記録
+     - **ADR-0001**: プロジェクト構造（ディレクトリ構造、命名規則、コロケーション原則）
+     - **ADR-0002**: 型定義戦略（typeで統一）
+     - **ADR-0003**: Server Component優先戦略（Props-based control、Compositionパターン）
+     - **ADR-0004**: インポート戦略（バレルインポート禁止、@/ alias使用）
+     - **ADR-0005**: キャッシュ戦略（Cache Components、use cache + cacheLife）
+     - **ADR-0006**: エラーハンドリング戦略（Result型、部分的エラー表示）
+     - **ADR-0007**: データ取得戦略（Server Component優先、TanStack Query + Route Handler）
+     - **ADR-0008**: データ更新戦略（Server Actions、updateTag/revalidateTag、useOptimistic）
+     - **ADR-0009**: 状態管理戦略（SSOT、スコープ基準、グローバルステート最小化）
+  4. 実装がADRの決定と一致しているか確認
+  5. 新しい決定が必要な場合は`adr-memory-manager`エージェントを使用して記録
 
 **ADR確認のタイミング:**
 - Phase 1で初回確認（必須）
@@ -163,8 +166,7 @@ path: 'src/auth/login.ts'
 - [ ] Kiri MCPで関連コードを特定
 - [ ] 必要なライブラリのドキュメントを確認
 - [ ] 既存パターンと依存関係を把握
-- [ ] **ADRを確認し、既存決定を理解**（必須 - コード調査とは別に実行）
-- [ ] **ADR-0004を確認し、デモ実装の必要性を判断**（新規コンポーネント作成時は必須）
+- [ ] **9つのコアADR（ADR-0001〜0009）を確認**（必須 - コード調査とは別に実行）
 - [ ] 実装がADRの決定と一致していることを確認
 
 ---
@@ -632,7 +634,8 @@ npm run build
 
 ## 補足資料
 
-- **[frontend-rules.md](./docs/frontend-rules.md)**: プロジェクトの全体概要、技術スタック、アーキテクチャ設計、コーディング規約
+- **[dev-local/adr/](./dev-local/adr/)**: ADR（Architecture Decision Records）- 重要なアーキテクチャ決定の記録（AI消費に最適化）
+- **[frontend-rules.md](./docs/frontend-rules.md)**: 開発者向け包括的ガイドライン（人間の可読性を重視）
 - **[MCP_REFERENCE.md](./MCP_REFERENCE.md)**: Kiri MCP、Serena MCP、Next.js MCP、Chrome DevTools MCP、Browser Eval MCPの詳細なコマンドリファレンス
 
 ## MCP使い分けまとめ

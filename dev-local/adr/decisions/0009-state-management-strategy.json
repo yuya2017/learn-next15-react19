@@ -1,0 +1,439 @@
+{
+  "id": "ADR-0009",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "状態管理戦略の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js App Routerでは、Server ComponentとClient Componentの両方が存在し、さらにデータの取得元（サーバー/クライアント）、データの種類（リモート/ローカル）、データのスコープ（コンポーネント内/複数コンポーネント/複数画面）など、多様な状態管理の選択肢がある。これらを適切に使い分けないと、不必要なグローバルステートが増加し、パフォーマンスや保守性が低下する。また、Server ComponentとClient Componentの境界を意識せずに状態を管理すると、バンドルサイズの増加やハイドレーションエラーなどの問題が発生する。",
+    "constraints": [
+      "Next.js 16のApp Router仕様に準拠",
+      "React 19のServer ComponentsとClient Componentsの制約に従う",
+      "Server Componentではクライアント側のHooks（useState、useContext等）が使用不可",
+      "グローバルステートはバンドルサイズを増加させる",
+      "リモートデータのキャッシュ戦略はADR-0005に従う",
+      "データ取得戦略はADR-0007に従う"
+    ],
+    "requirements": [
+      "SSOT（Single Source of Truth）とスコープを基準にステート管理方法を選定",
+      "リモートデータはServer ComponentのキャッシュとTanStack Queryで管理",
+      "グローバルステートは極力使用しない",
+      "各ユースケースに応じた適切な状態管理方法の定義",
+      "パフォーマンスと保守性のバランス"
+    ]
+  },
+  "decision": {
+    "summary": "リモートデータは「サーバーフェッチスナップショット」（Server Component + use cache）と「サーバーステート」（TanStack Query）で管理し、グローバルステートは極力使用しない。ローカルステートは単一コンポーネント内でuseState/useReducerを使用し、複数コンポーネント間で共有が必要な場合のみuseContext/Zustand/Jotaiを検討する。SSOT（データの主軸）とスコープ（利用範囲）を基準に状態管理方法を選定する。",
+    "details": "## 状態管理戦略の基本方針\n\n### 1. リモートデータは「サーバーフェッチスナップショット」と「サーバーステート」で管理\n\nリモートデータ（API経由で取得するデータ）は、Server ComponentのキャッシュまたはTanStack Queryのキャッシュで管理する。グローバルステート（Redux、Zustandなど）にリモートデータを保存しない。\n\n- **サーバーフェッチスナップショット**: Server Component + fetch + use cache（ADR-0005、ADR-0007）\n- **サーバーステート**: Client Component + TanStack Query + Route Handler（ADR-0007）\n\n### 2. グローバルステートは極力使用しない\n\nリモートデータは各画面で都度フェッチ＋キャッシュすることで、グローバルステートの使用を最小限に抑える。グローバルステートが必要なのは、以下のケースのみ：\n\n- クライアント側で生成したデータを複数コンポーネント・複数画面で共有する場合\n- UIの状態（モーダルの開閉、テーマ設定など）を複数コンポーネントで共有する場合\n\n### 3. SSOT（データの主軸）とスコープを基準にステートを選定\n\n状態管理方法を選定する際は、以下の2つの基準で判断する：\n\n1. **SSOT（Single Source of Truth）**: データの主軸はどこか？（サーバー/クライアント）\n2. **スコープ**: データの利用範囲はどこか？（単一コンポーネント/複数コンポーネント/複数画面）\n\n## 主要ユースケースと実装方法\n\n### 1. ローカルステート（useState, useReducer）\n\n**ユースケース**: クライアントデータ + 単一コンポーネント\n\n**実装方法**: useState, useReducer\n\n**適用ケース**:\n- フォームの入力状態（1コンポーネント内）\n- モーダルの開閉状態（1コンポーネント内）\n- アコーディオンの展開/折りたたみ状態\n- タブの選択状態\n- ローディング状態\n\n**メリット**:\n- 実装がシンプル\n- バンドルサイズが最小\n- コンポーネントの独立性が高い\n\n**注意点**:\n- Client Componentでのみ使用可能\n- 他のコンポーネントと共有できない\n\n### 2. 小中規模グローバルステート（useContext, Zustand, Jotai）\n\n**ユースケース**: クライアントデータ + 複数コンポーネント・複数画面\n\n**実装方法**: useContext, Zustand, Jotai\n\n**適用ケース**:\n- テーマ設定（ダークモード/ライトモード）\n- 言語設定（i18n）\n- グローバルなモーダル管理\n- 通知/トースト管理\n- ユーザーの操作履歴（undo/redo）\n\n**選定基準**:\n- **useContext**: シンプルなグローバルステート（3つ以下の状態）\n- **Zustand**: 中規模のグローバルステート（複数の状態、複雑な更新ロジック）\n- **Jotai**: Atom単位での細かい状態管理が必要な場合\n\n**注意点**:\n- バンドルサイズが増加する\n- リモートデータの管理には使用しない（TanStack Queryを使用）\n\n### 3. サーバーフェッチスナップショット（Server Component + fetch + Data Cache）\n\n**ユースケース**: リモートデータ + サーバーフェッチ\n\n**実装方法**: Server Component + fetch + use cache（ADR-0005、ADR-0007）\n\n**適用ケース**:\n- 初回レンダリング時のデータ取得\n- 静的コンテンツ（FAQ、利用規約）\n- マスタデータ（カテゴリ、タグ、設定）\n- 商品一覧、記事一覧\n\n**メリット**:\n- 初期レンダリングが高速\n- SEO最適化が容易\n- バンドルサイズが最小（データフェッチロジックがクライアントに含まれない）\n\n**注意点**:\n- Server Componentでのみ使用可能\n- クライアント側でのデータ更新には対応できない（Server Actionsで更新）\n\n### 4. サーバーステート（TanStack Query）\n\n**ユースケース**: リモートデータ + クライアントフェッチ\n\n**実装方法**: TanStack Query + Route Handler（ADR-0007）\n\n**適用ケース**:\n- ユーザー操作時のデータフェッチ（ボタンクリック、フォーム送信）\n- 依存クエリ（前のクエリ結果に依存するデータフェッチ）\n- リアルタイム更新が必要なデータ\n- 楽観的更新が必要なデータ\n\n**メリット**:\n- キャッシュ管理が容易（staleTime、gcTime）\n- 楽観的更新（useMutation）のサポート\n- 依存クエリ（enabled）のサポート\n- リフェッチ、ポーリング、無限スクロールなどの高度な機能\n\n**注意点**:\n- Client Componentでのみ使用可能\n- Route Handlerを経由する必要がある（セキュリティのため）\n\n### 5. URLステート（searchParams/useSearchParams + Link/router.replace）\n\n**ユースケース**: 現在の操作状態の再現・共有、リロード保持\n\n**実装方法**: searchParams（Server Component）/ useSearchParams（Client Component）+ Link/router.replace\n\n**適用ケース**:\n- 検索条件（キーワード、フィルタ、ソート）\n- ページネーション（現在のページ番号）\n- タブの選択状態（共有可能にしたい場合）\n- モーダルの開閉状態（共有可能にしたい場合）\n\n**メリット**:\n- URLで状態を共有可能（他のユーザーに送れる）\n- リロードしても状態が保持される\n- ブラウザの戻る/進むボタンで状態を復元できる\n\n**注意点**:\n- 機密情報は含めない（URLは共有される）\n- 複雑なオブジェクトの管理は不向き（シリアライズが必要）\n\n### 6. フォームステート（React Hook Form + zod）\n\n**ユースケース**: 入力値・バリデーション管理\n\n**実装方法**: React Hook Form + zod\n\n**適用ケース**:\n- フォームの入力値管理\n- バリデーションエラーの表示\n- フォームの送信状態管理\n\n**メリット**:\n- パフォーマンスが高い（非制御コンポーネント）\n- zodとの統合によるスキーマバリデーション\n- エラーハンドリングが容易\n\n**注意点**:\n- Client Componentでのみ使用可能\n- 複雑なフォームロジックの場合、カスタムフックへの切り出しを検討\n\n### 7. ブラウザステート（localStorage, sessionStorage, IndexedDB）\n\n**ユースケース**: セッション間・タブ間共有、リロード保持\n\n**実装方法**: localStorage, sessionStorage, IndexedDB\n\n**適用ケース**:\n- ユーザー設定（テーマ、言語、表示設定）\n- ドラフト保存（フォームの入力途中データ）\n- オフラインデータ（PWA）\n\n**メリット**:\n- ブラウザを閉じても保持される（localStorage、IndexedDB）\n- タブ間で共有可能\n- オフライン対応が可能\n\n**注意点**:\n- クライアント側でのみ使用可能\n- 機密情報は保存しない（暗号化が必要）\n- 容量制限がある（localStorage: 5-10MB、IndexedDB: 50MB-無制限）\n\n### 8. セッション / 認証ステート（httpOnly Cookie、Redis）\n\n**ユースケース**: ユーザー識別 + 機密情報\n\n**実装方法**: httpOnly Cookie、Redis\n\n**適用ケース**:\n- ログインセッション\n- CSRF トークン\n- ユーザー認証情報\n\n**メリット**:\n- セキュリティが高い（httpOnly CookieはJavaScriptからアクセス不可）\n- サーバー側で管理可能（Redis）\n\n**注意点**:\n- サーバー側での実装が必要\n- XSS/CSRF対策が必須",
+    "alternatives": [
+      {
+        "option": "全てのデータをRedux/Zustandで管理（従来のSPA方式）",
+        "pros": [
+          "状態管理が一元化される",
+          "全てのデータが同じパターンで管理できる",
+          "従来のReactアプリケーションと同じ実装"
+        ],
+        "cons": [
+          "バンドルサイズが大幅に増加する",
+          "Server Componentの利点を活かせない",
+          "リモートデータのキャッシュが二重管理になる（Server Component + Redux）",
+          "初期レンダリングが遅くなる",
+          "SEO最適化が困難"
+        ],
+        "rejected": true,
+        "reason": "Server Componentの利点（初期レンダリング速度、SEO最適化、バンドルサイズ削減）を放棄することになり、Next.js App Routerの思想に反する。リモートデータはServer ComponentまたはTanStack Queryで管理すべき"
+      },
+      {
+        "option": "全てをローカルステート（useState）で管理",
+        "pros": [
+          "実装がシンプル",
+          "バンドルサイズが最小",
+          "コンポーネントの独立性が高い"
+        ],
+        "cons": [
+          "props drillingが深くなる",
+          "コンポーネント間でのデータ共有が困難",
+          "リモートデータのキャッシュ管理が不可能",
+          "複雑な状態管理ができない"
+        ],
+        "rejected": true,
+        "reason": "コンポーネント間でのデータ共有が必要なケースや、リモートデータのキャッシュ管理が必要なケースで実用的ではない"
+      },
+      {
+        "option": "TanStack Queryで全てのリモートデータを管理（Server Component不使用）",
+        "pros": [
+          "リモートデータの管理が統一される",
+          "キャッシュ管理が容易",
+          "楽観的更新やリフェッチなどの高度な機能が使える"
+        ],
+        "cons": [
+          "初期レンダリングが遅くなる（クライアント側でデータフェッチ）",
+          "SEO最適化が困難（データがHTMLに含まれない）",
+          "バンドルサイズが増加する",
+          "Server Componentの利点を活かせない"
+        ],
+        "rejected": true,
+        "reason": "初期レンダリング時のデータはServer Componentで取得し、ユーザー操作時のデータのみTanStack Queryで管理する方がパフォーマンスとSEOの観点で優れている"
+      },
+      {
+        "option": "全てをURLステートで管理",
+        "pros": [
+          "状態の共有が容易",
+          "リロードしても状態が保持される",
+          "ブラウザの戻る/進むで状態を復元できる"
+        ],
+        "cons": [
+          "複雑なオブジェクトの管理が困難（シリアライズ問題）",
+          "機密情報を含められない",
+          "URLが長くなりすぎる",
+          "リモートデータの管理には不向き"
+        ],
+        "rejected": true,
+        "reason": "URLステートは検索条件やページネーションなど、共有可能な状態のみに限定すべき。リモートデータやローカルステートの管理には不向き"
+      }
+    ],
+    "rationale": "## 状態管理戦略の理由\n\n### 1. パフォーマンスの最適化\n\n- **バンドルサイズの削減**: リモートデータをグローバルステートに保存せず、Server ComponentまたはTanStack Queryで管理することで、バンドルサイズを大幅に削減\n- **初期レンダリング速度の向上**: Server Componentでデータを取得することで、サーバー側で完全なHTMLを生成し、クライアントへの初期表示が高速化\n- **キャッシュの効率化**: Server ComponentのキャッシュとTanStack Queryのキャッシュを適切に使い分けることで、データの新鮮さを保ちながらパフォーマンスを最適化\n\n### 2. 保守性の向上\n\n- **SSOT（Single Source of Truth）の明確化**: データの主軸（サーバー/クライアント）を基準に状態管理方法を選定することで、データの流れが明確になり、保守性が向上\n- **スコープの明確化**: データの利用範囲（単一コンポーネント/複数コンポーネント/複数画面）を基準に状態管理方法を選定することで、不必要なグローバルステートを防ぐ\n- **一貫性のある実装**: 各ユースケースに応じた明確な実装パターンを定義することで、プロジェクト全体で一貫性のある実装が可能\n\n### 3. SEOの最適化\n\n- Server Componentで取得したデータは完全なHTMLとしてレンダリングされるため、検索エンジンのクローラーが正確にコンテンツを認識\n- グローバルステートに依存しないため、JavaScript無効時でもコンテンツが表示される\n\n### 4. セキュリティの向上\n\n- Server ComponentではAPIキーやDB接続情報をクライアントに露出せずに使用可能\n- httpOnly Cookieを使用することで、XSS攻撃からセッション情報を保護\n- URLステートには機密情報を含めないルールにより、情報漏洩を防ぐ\n\n### 5. Next.js App Routerのベストプラクティスに準拠\n\n- Server Component優先の設計（ADR-0003）\n- キャッシュ戦略との統合（ADR-0005）\n- データ取得戦略との統合（ADR-0007）\n- フレームワークが提供する機能を最大限に活用",
+    "consequences": [
+      "【メリット】バンドルサイズが大幅に削減される（リモートデータをグローバルステートに保存しない）",
+      "【メリット】初期レンダリングのパフォーマンスが向上（Server Componentでのデータ取得）",
+      "【メリット】SEO最適化が容易（完全なHTMLとして配信）",
+      "【メリット】保守性が向上（SSOTとスコープが明確）",
+      "【メリット】セキュリティが向上（httpOnly Cookie、Server Component）",
+      "【メリット】キャッシュ管理が効率的（Server ComponentとTanStack Queryの使い分け）",
+      "【メリット】一貫性のある実装（明確な実装パターン）",
+      "【メリット】Next.js App Routerのベストプラクティスに準拠",
+      "【デメリット】開発者が複数の状態管理方法を理解する必要がある",
+      "【デメリット】従来のSPA方式（全てRedux/Zustand）からの移行コストが発生する",
+      "【デメリット】SSOTとスコープの判断が必要（選定基準の理解が必要）",
+      "【デメリット】Server ComponentとClient Componentの使い分けを意識する必要がある"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "app/**/page.tsx",
+      "app/**/layout.tsx",
+      "app/**/_components/*.tsx",
+      "components/**/*.tsx",
+      "hooks/use*.ts",
+      "stores/**/*.ts",
+      "providers/**/*.tsx",
+      "lib/react-query.ts",
+      "lib/zustand.ts"
+    ],
+    "affected_components": [
+      "All page components",
+      "All layout components",
+      "All Server Components",
+      "All Client Components",
+      "All custom hooks",
+      "All providers",
+      "All stores",
+      "TanStack Query hooks",
+      "Form components"
+    ],
+    "code_patterns": [
+      "useState",
+      "useReducer",
+      "useContext",
+      "Zustand",
+      "Jotai",
+      "TanStack Query (useQuery, useMutation)",
+      "searchParams",
+      "useSearchParams",
+      "React Hook Form",
+      "localStorage",
+      "sessionStorage",
+      "httpOnly Cookie"
+    ],
+    "examples": [
+      {
+        "file": "examples/local-state-useState.tsx",
+        "description": "ローカルステート（useState）の例",
+        "code": "// モーダルの開閉状態（単一コンポーネント内）\n'use client';\n\nimport { useState } from 'react';\n\nexport function Modal() {\n  const [isOpen, setIsOpen] = useState(false);\n\n  return (\n    <>\n      <button onClick={() => setIsOpen(true)}>Open Modal</button>\n      {isOpen && (\n        <div className=\"modal\">\n          <button onClick={() => setIsOpen(false)}>Close</button>\n        </div>\n      )}\n    </>\n  );\n}"
+      },
+      {
+        "file": "examples/global-state-zustand.tsx",
+        "description": "グローバルステート（Zustand）の例",
+        "code": "// stores/theme.ts\nimport { create } from 'zustand';\n\ntype ThemeStore = {\n  theme: 'light' | 'dark';\n  setTheme: (theme: 'light' | 'dark') => void;\n};\n\nexport const useThemeStore = create<ThemeStore>((set) => ({\n  theme: 'light',\n  setTheme: (theme) => set({ theme }),\n}));\n\n// components/ThemeToggle.tsx\n'use client';\n\nimport { useThemeStore } from '@/stores/theme';\n\nexport function ThemeToggle() {\n  const { theme, setTheme } = useThemeStore();\n\n  return (\n    <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>\n      {theme === 'light' ? 'Dark' : 'Light'} Mode\n    </button>\n  );\n}"
+      },
+      {
+        "file": "examples/server-fetch-snapshot.tsx",
+        "description": "サーバーフェッチスナップショット（Server Component + use cache）の例",
+        "code": "// Server Componentで商品一覧を取得し、1時間キャッシュ\nexport async function ProductList() {\n  'use cache';\n  cacheLife('hours');\n  cacheTag('products');\n\n  const products = await fetchProducts(); // サーバー側で直接フェッチ\n  return (\n    <ul>\n      {products.map(p => <ProductCard key={p.id} product={p} />)}\n    </ul>\n  );\n}"
+      },
+      {
+        "file": "examples/server-state-tanstack-query.tsx",
+        "description": "サーバーステート（TanStack Query）の例",
+        "code": "// Client Componentでユーザー操作時にデータフェッチ\n'use client';\n\nimport { useQuery } from '@tanstack/react-query';\nimport { searchProducts } from '@/apis/products.client';\n\nexport function SearchResults({ query }: { query: string }) {\n  const { data, isLoading, error } = useQuery({\n    queryKey: ['products', 'search', query],\n    queryFn: () => searchProducts(query), // Route Handlerを経由\n    enabled: query.length > 0,\n    staleTime: 5 * 60 * 1000, // 5分\n  });\n\n  if (isLoading) return <Loading />;\n  if (error) return <Error message={error.message} />;\n\n  return (\n    <ul>\n      {data?.products.map(p => <ProductCard key={p.id} product={p} />)}\n    </ul>\n  );\n}"
+      },
+      {
+        "file": "examples/url-state-searchparams.tsx",
+        "description": "URLステート（searchParams）の例",
+        "code": "// Server Componentで検索条件を取得\ntype Props = {\n  searchParams: { q?: string; page?: string };\n};\n\nexport default async function SearchPage({ searchParams }: Props) {\n  const query = searchParams.q || '';\n  const page = Number(searchParams.page) || 1;\n\n  return (\n    <div>\n      <SearchForm initialQuery={query} />\n      <SearchResults query={query} page={page} />\n    </div>\n  );\n}\n\n// Client Componentで検索条件を更新\n'use client';\n\nimport { useRouter } from 'next/navigation';\n\nexport function SearchForm({ initialQuery }: { initialQuery: string }) {\n  const router = useRouter();\n  const [query, setQuery] = useState(initialQuery);\n\n  const handleSubmit = (e: React.FormEvent) => {\n    e.preventDefault();\n    router.replace(`/search?q=${encodeURIComponent(query)}`);\n  };\n\n  return (\n    <form onSubmit={handleSubmit}>\n      <input value={query} onChange={(e) => setQuery(e.target.value)} />\n      <button type=\"submit\">Search</button>\n    </form>\n  );\n}"
+      },
+      {
+        "file": "examples/form-state-react-hook-form.tsx",
+        "description": "フォームステート（React Hook Form + zod）の例",
+        "code": "'use client';\n\nimport { useForm } from 'react-hook-form';\nimport { zodResolver } from '@hookform/resolvers/zod';\nimport { z } from 'zod';\n\nconst schema = z.object({\n  name: z.string().min(1, 'Name is required'),\n  email: z.string().email('Invalid email'),\n});\n\ntype FormData = z.infer<typeof schema>;\n\nexport function UserForm() {\n  const {\n    register,\n    handleSubmit,\n    formState: { errors },\n  } = useForm<FormData>({\n    resolver: zodResolver(schema),\n  });\n\n  const onSubmit = (data: FormData) => {\n    console.log(data);\n  };\n\n  return (\n    <form onSubmit={handleSubmit(onSubmit)}>\n      <input {...register('name')} />\n      {errors.name && <p>{errors.name.message}</p>}\n      \n      <input {...register('email')} />\n      {errors.email && <p>{errors.email.message}</p>}\n      \n      <button type=\"submit\">Submit</button>\n    </form>\n  );\n}"
+      },
+      {
+        "file": "examples/browser-state-localstorage.tsx",
+        "description": "ブラウザステート（localStorage）の例",
+        "code": "'use client';\n\nimport { useEffect, useState } from 'react';\n\nexport function DraftEditor() {\n  const [content, setContent] = useState('');\n\n  // localStorageから復元\n  useEffect(() => {\n    const draft = localStorage.getItem('draft');\n    if (draft) setContent(draft);\n  }, []);\n\n  // localStorageに保存\n  const handleChange = (value: string) => {\n    setContent(value);\n    localStorage.setItem('draft', value);\n  };\n\n  return (\n    <textarea\n      value={content}\n      onChange={(e) => handleChange(e.target.value)}\n    />\n  );\n}"
+      },
+      {
+        "file": "examples/session-state-httponly-cookie.ts",
+        "description": "セッション/認証ステート（httpOnly Cookie）の例",
+        "code": "// Server Actionでセッションを作成（httpOnly Cookie）\nimport { cookies } from 'next/headers';\n\nexport async function login(email: string, password: string) {\n  // ユーザー認証\n  const user = await authenticateUser(email, password);\n  if (!user) {\n    return { isSuccess: false, errorMessage: 'Invalid credentials' };\n  }\n\n  // セッショントークンを生成\n  const sessionToken = await createSessionToken(user.id);\n\n  // httpOnly Cookieに保存（JavaScriptからアクセス不可）\n  cookies().set('session', sessionToken, {\n    httpOnly: true,\n    secure: process.env.NODE_ENV === 'production',\n    sameSite: 'lax',\n    maxAge: 60 * 60 * 24 * 7, // 7日間\n  });\n\n  return { isSuccess: true, data: user };\n}\n\n// Server Componentでセッションを取得\nexport async function getSession() {\n  const sessionToken = cookies().get('session')?.value;\n  if (!sessionToken) return null;\n\n  return await validateSessionToken(sessionToken);\n}"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "state-management",
+      "useState",
+      "useReducer",
+      "useContext",
+      "zustand",
+      "jotai",
+      "tanstack-query",
+      "react-query",
+      "server-component",
+      "client-component",
+      "use-cache",
+      "searchParams",
+      "useSearchParams",
+      "react-hook-form",
+      "zod",
+      "localStorage",
+      "sessionStorage",
+      "indexedDB",
+      "httpOnly-cookie",
+      "redis",
+      "cache-strategy",
+      "data-fetching",
+      "performance",
+      "security",
+      "seo",
+      "nextjs",
+      "nextjs-16",
+      "react",
+      "react-19",
+      "ssot",
+      "scope",
+      "bundle-size"
+    ],
+    "related_adrs": [
+      "ADR-0003",
+      "ADR-0005",
+      "ADR-0007",
+      "ADR-0008"
+    ],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "状態管理",
+    "state management",
+    "グローバルステート",
+    "global state",
+    "ローカルステート",
+    "local state",
+    "サーバーステート",
+    "server state",
+    "クライアントステート",
+    "client state",
+    "useState",
+    "useReducer",
+    "useContext",
+    "Zustand",
+    "Jotai",
+    "Redux",
+    "TanStack Query",
+    "React Query",
+    "Server Component",
+    "Client Component",
+    "use cache",
+    "searchParams",
+    "useSearchParams",
+    "URLステート",
+    "URL state",
+    "React Hook Form",
+    "フォームステート",
+    "form state",
+    "localStorage",
+    "sessionStorage",
+    "IndexedDB",
+    "ブラウザステート",
+    "browser state",
+    "httpOnly Cookie",
+    "セッション",
+    "session",
+    "認証",
+    "authentication",
+    "SSOT",
+    "Single Source of Truth",
+    "スコープ",
+    "scope",
+    "リモートデータ",
+    "remote data",
+    "サーバーフェッチスナップショット",
+    "server fetch snapshot",
+    "キャッシュ戦略",
+    "cache strategy",
+    "パフォーマンス",
+    "performance",
+    "バンドルサイズ",
+    "bundle size",
+    "SEO",
+    "セキュリティ",
+    "security"
+  ],
+  "state_management_matrix": {
+    "local_state": {
+      "use_cases": "クライアントデータ + 単一コンポーネント",
+      "implementation": "useState, useReducer",
+      "ssot": "Client",
+      "scope": "Single Component",
+      "examples": [
+        "フォームの入力状態（1コンポーネント内）",
+        "モーダルの開閉状態（1コンポーネント内）",
+        "アコーディオンの展開/折りたたみ状態",
+        "タブの選択状態",
+        "ローディング状態"
+      ]
+    },
+    "global_state": {
+      "use_cases": "クライアントデータ + 複数コンポーネント・複数画面",
+      "implementation": "useContext, Zustand, Jotai",
+      "ssot": "Client",
+      "scope": "Multiple Components / Multiple Pages",
+      "examples": [
+        "テーマ設定（ダークモード/ライトモード）",
+        "言語設定（i18n）",
+        "グローバルなモーダル管理",
+        "通知/トースト管理",
+        "ユーザーの操作履歴（undo/redo）"
+      ]
+    },
+    "server_fetch_snapshot": {
+      "use_cases": "リモートデータ + サーバーフェッチ",
+      "implementation": "Server Component + fetch + use cache",
+      "ssot": "Server",
+      "scope": "Initial Render",
+      "examples": [
+        "初回レンダリング時のデータ取得",
+        "静的コンテンツ（FAQ、利用規約）",
+        "マスタデータ（カテゴリ、タグ、設定）",
+        "商品一覧、記事一覧"
+      ]
+    },
+    "server_state": {
+      "use_cases": "リモートデータ + クライアントフェッチ",
+      "implementation": "TanStack Query + Route Handler",
+      "ssot": "Server",
+      "scope": "User Interaction",
+      "examples": [
+        "ユーザー操作時のデータフェッチ",
+        "依存クエリ",
+        "リアルタイム更新",
+        "楽観的更新"
+      ]
+    },
+    "url_state": {
+      "use_cases": "現在の操作状態の再現・共有、リロード保持",
+      "implementation": "searchParams/useSearchParams + Link/router.replace",
+      "ssot": "URL",
+      "scope": "Shareable State",
+      "examples": [
+        "検索条件（キーワード、フィルタ、ソート）",
+        "ページネーション",
+        "タブの選択状態（共有可能）",
+        "モーダルの開閉状態（共有可能）"
+      ]
+    },
+    "form_state": {
+      "use_cases": "入力値・バリデーション管理",
+      "implementation": "React Hook Form + zod",
+      "ssot": "Client",
+      "scope": "Form Component",
+      "examples": [
+        "フォームの入力値管理",
+        "バリデーションエラーの表示",
+        "フォームの送信状態管理"
+      ]
+    },
+    "browser_state": {
+      "use_cases": "セッション間・タブ間共有、リロード保持",
+      "implementation": "localStorage, sessionStorage, IndexedDB",
+      "ssot": "Browser",
+      "scope": "Cross Session / Cross Tab",
+      "examples": [
+        "ユーザー設定（テーマ、言語、表示設定）",
+        "ドラフト保存",
+        "オフラインデータ（PWA）"
+      ]
+    },
+    "session_state": {
+      "use_cases": "ユーザー識別 + 機密情報",
+      "implementation": "httpOnly Cookie、Redis",
+      "ssot": "Server",
+      "scope": "Session / Authentication",
+      "examples": [
+        "ログインセッション",
+        "CSRFトークン",
+        "ユーザー認証情報"
+      ]
+    }
+  },
+  "selection_criteria": {
+    "step_1": {
+      "question": "データの主軸（SSOT）はどこか？",
+      "options": {
+        "server": "サーバー側でデータを生成・管理 → リモートデータ",
+        "client": "クライアント側でデータを生成・管理 → ローカルデータ",
+        "url": "URLでデータを管理 → URLステート",
+        "browser": "ブラウザストレージでデータを管理 → ブラウザステート"
+      }
+    },
+    "step_2_remote_data": {
+      "question": "リモートデータの場合：いつデータを取得するか？",
+      "options": {
+        "initial_render": "初回レンダリング時 → Server Component + use cache",
+        "user_interaction": "ユーザー操作時 → TanStack Query + Route Handler"
+      }
+    },
+    "step_2_local_data": {
+      "question": "ローカルデータの場合：データのスコープはどこか？",
+      "options": {
+        "single_component": "単一コンポーネント内 → useState/useReducer",
+        "multiple_components": "複数コンポーネント・複数画面 → useContext/Zustand/Jotai",
+        "form": "フォーム → React Hook Form + zod"
+      }
+    },
+    "step_3_global_state": {
+      "question": "グローバルステートの場合：状態の複雑さは？",
+      "options": {
+        "simple": "シンプル（3つ以下の状態） → useContext",
+        "medium": "中規模（複数の状態、複雑な更新ロジック） → Zustand",
+        "atomic": "Atom単位での細かい管理 → Jotai"
+      }
+    }
+  },
+  "best_practices": [
+    "リモートデータはグローバルステート（Redux、Zustand）に保存しない（Server ComponentまたはTanStack Queryを使用）",
+    "グローバルステートは極力使用しない（SSOT=Clientかつスコープ=複数コンポーネントの場合のみ）",
+    "SSOT（データの主軸）とスコープ（利用範囲）を基準に状態管理方法を選定する",
+    "初回レンダリング時のリモートデータはServer Component + use cacheで管理する",
+    "ユーザー操作時のリモートデータはTanStack Query + Route Handlerで管理する",
+    "単一コンポーネント内のローカルステートはuseState/useReducerを使用する",
+    "複数コンポーネント間で共有するローカルステートはuseContext/Zustand/Jotaiを使用する",
+    "検索条件やページネーションなど、共有可能な状態はURLステートを使用する",
+    "フォームの状態管理はReact Hook Form + zodを使用する",
+    "ユーザー設定やドラフト保存はlocalStorage/sessionStorageを使用する",
+    "セッション情報や認証情報はhttpOnly CookieまたはRedisを使用する",
+    "機密情報はlocalStorageに保存しない（httpOnly Cookieを使用）",
+    "URLステートには機密情報を含めない（URLは共有される）"
+  ]
+}

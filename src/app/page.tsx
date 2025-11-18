@@ -6,7 +6,7 @@ export default function Home() {
       <main className="w-full max-w-4xl rounded-3xl border border-zinc-200 bg-white/90 p-8 shadow-2xl shadow-slate-900/10 dark:border-zinc-800 dark:bg-zinc-900/80">
         <header className="space-y-2 text-center text-zinc-600 dark:text-zinc-300 sm:text-left">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-600">
-            Next.js 15の検証
+            Next.js 16の検証
           </p>
           <h1 className="text-4xl font-semibold text-black dark:text-zinc-50">
             `redirect` と `permanentRedirect` を使い分ける

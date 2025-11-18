@@ -1,8 +1,8 @@
-# PROJECT.md
-
 ## プロジェクト概要
 
 このプロジェクトは、Next.js 15 / React 19 を使用した最新のWeb アプリケーション開発のベストプラクティスを実装・学習するためのプロジェクトです。App Routerの思想に沿った実装を心がけ、フレームワークが提供する機能を最大限に活用します。
+
+**📘 ADR（Architecture Decision Records）**: このドキュメントで説明されている重要なアーキテクチャ決定は、[dev-local/adr/](./adr/)ディレクトリに詳細な意思決定記録として保管されています。各セクションには対応するADRへのリンクが含まれています。
 
 ## 技術スタック
 
@@ -27,10 +27,12 @@
 ### 基本方針
 
 1. **App Routerの思想に沿った実装** - Next.js 16のApp Routerが推奨する設計パターンに従う
-2. **型定義は`type`で統一** - `interface`ではなく`type`を使用
-3. **Server Componentを優先** - 可能な限りServer Componentを使用し、Client Componentは必要最小限に
+2. **型定義は`type`で統一** - `interface`ではなく`type`を使用 → [ADR-0002](../adr/decisions/0002-type-definition-strategy.json)
+3. **Server Componentを優先** - 可能な限りServer Componentを使用し、Client Componentは必要最小限に → [ADR-0003](../adr/decisions/0003-server-component-priority.json)
 
 ### ディレクトリ構成
+
+**→ [ADR-0001: プロジェクト構造とディレクトリ構成](../adr/decisions/0001-project-structure.json)**
 
 ```
 src/
@@ -152,6 +154,8 @@ src/
 
 ## 状態管理戦略
 
+**→ [ADR-0009: 状態管理戦略の決定](../adr/decisions/0009-state-management-strategy.json)**
+
 ### 基本方針
 
 1. **リモートデータは「サーバーフェッチスナップショット」と「サーバーステート」で管理** - 各画面で都度fetch + キャッシュ
@@ -172,6 +176,8 @@ src/
 | ユーザー識別 + 機密情報 | セッション / 認証ステート | httpOnly Cookie、Redis |
 
 ## キャッシュ戦略
+
+**→ [ADR-0005: キャッシュ戦略（Cache Components）](../adr/decisions/0005-cache-strategy.json)**
 
 ### Next.js 16: 動的がデフォルト、必要な部分を明示的にキャッシュ
 
@@ -202,6 +208,8 @@ src/
 | `'days'` | 1日 | マスタデータ、静的コンテンツ |
 
 ## エラーハンドリング
+
+**→ [ADR-0006: エラーハンドリング戦略（Result型）](../adr/decisions/0006-error-handling-strategy.json)**
 
 ### 基本方針
 
@@ -242,7 +250,7 @@ export type Result<S> = SuccessResult<S> | ErrorResult;
 2. **APIクライアントの配置ルール** - サーバー用（`*.server.ts`）とクライアント用（`*.client.ts`）を分ける
 3. **Server Actionsとの連携** - `actions`直下のServer Actions関数では、直接`fetch`処理は書かず、`apis`直下のAPIクライアントをimportして使用
 4. **default exportで統一** - 基本的にコンポーネントは`default export`に統一
-5. **バレルインポート禁止** - `@/` aliasを使用した個別インポートを使用
+5. **バレルインポート禁止** - `@/` aliasを使用した個別インポートを使用 → [ADR-0004](../adr/decisions/0004-import-strategy.json)
 
 ## レビュー観点
 

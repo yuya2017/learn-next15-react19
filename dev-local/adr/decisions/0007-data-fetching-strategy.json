@@ -1,0 +1,344 @@
+{
+  "id": "ADR-0007",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "データ取得戦略の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js 16のApp Routerでは、Server Component、Client Component、Route Handlerなど複数のデータ取得方法が存在し、それぞれに適切な使い分けが必要。キャッシュ戦略（use cache）との組み合わせ、TanStack Queryとの使い分け、セキュリティ（APIキーの露出防止）、パフォーマンス（初期レンダリング速度、ネットワークリクエスト数）など、考慮すべき要素が多い。統一的なデータ取得戦略がないと、プロジェクト全体で一貫性のない実装となり、保守性とパフォーマンスが低下する。",
+    "constraints": [
+      "Next.js 16のApp Router仕様に準拠",
+      "React 19のServer ComponentsとClient Componentsの制約に従う",
+      "Server ComponentではfetchやDBクライアントが直接使用可能",
+      "Client ComponentではブラウザAPIのみ使用可能（サーバー側のAPIキーやDBアクセスは不可）",
+      "外部APIのAPIキーをクライアントに露出してはならない（セキュリティ）",
+      "動的がデフォルト、必要に応じてuse cacheでキャッシュ（ADR-0005）",
+      "Server Component優先（ADR-0003）"
+    ],
+    "requirements": [
+      "Server Componentで直接データ取得を基本とする",
+      "クライアントフェッチはRoute Handlerを経由する（外部APIキーの保護）",
+      "TanStack Queryとの使い分けを明確にする",
+      "データフェッチコロケーション（データが必要なコンポーネントで取得）",
+      "キャッシュ戦略（use cache）との統合",
+      "各ユースケースに応じた実装パターンの定義"
+    ]
+  },
+  "decision": {
+    "summary": "Server Componentで直接データを取得することを基本とし、必要に応じてuse cacheでキャッシュを有効化する。クライアントフェッチが必要な場合はTanStack Query + Route Handlerを使用し、外部APIへのアクセスはRoute Handlerを経由させる。データフェッチコロケーションの原則に従い、データが必要なコンポーネントで直接フェッチする。",
+    "details": "## データ取得戦略の基本方針\n\n### 1. Next.js 16: 動的がデフォルト、必要に応じてキャッシュ\n\nServer Componentで直接データを取得し、必要に応じて`use cache`でキャッシュを有効化する。デフォルトでは動的レンダリングとなり、常に最新データを取得する。\n\n### 2. キャッシュ戦略の基準（ADR-0005との統合）\n\nデータの性質に応じてキャッシュ戦略を選択する：\n\n- **キャッシュする**: マスタデータ、コンテンツ、低頻度更新データ → `use cache`を使用\n- **キャッシュしない**: リアルタイムデータ、ユーザーセッション、高頻度更新データ → 動的レンダリング\n\n### 3. クライアントフェッチはTanStack QueryとRoute Handlerを使用\n\nクライアント側でのデータフェッチが必要な場合（ユーザー操作時、依存クエリなど）は、TanStack Query + Route Handlerを使用する。**必ずRoute Handlerを経由**して外部APIを叩くことで、APIキーやDB接続情報をクライアントに露出させない。\n\n### 4. データフェッチコロケーション\n\nデータが必要なコンポーネントで直接フェッチする。これにより、コンポーネントの独立性が高まり、再利用性と保守性が向上する。\n\n## 主要ユースケースと実装方法\n\n### 1. 初回レンダリング時（静的・キャッシュ可能）\n\n**実装方法**: Server Component + `use cache` + `cacheLife`\n\n**適用ケース**:\n- マスタデータ（カテゴリ、タグ、設定など）\n- 静的コンテンツ（FAQ、利用規約など）\n- 低頻度更新データ（商品一覧、記事一覧など）\n\n**キャッシュプロファイル**:\n- マスタデータ: `cacheLife('days')` - 1日\n- 商品一覧/記事一覧: `cacheLife('hours')` - 1時間\n- 検索結果: `cacheLife('minutes')` - 5分\n\n### 2. 初回レンダリング時（動的・ユーザー依存）\n\n**実装方法**: Server Component + `use cache: private` or 動的レンダリング + Suspense\n\n**適用ケース**:\n- ユーザープロフィール\n- ユーザー固有データ\n- パーソナライズされたコンテンツ\n\n**注意点**:\n- ユーザー固有データでもキャッシュ可能（`cacheLife('minutes')`推奨）\n- セッション情報や機密情報は動的レンダリング\n\n### 3. 初回レンダリング時（ランタイムAPI使用）\n\n**実装方法**: Server Component + 動的レンダリング + Suspense\n\n**適用ケース**:\n- cookies()やheaders()を使用する場合\n- searchParamsを使用する場合\n- リアルタイムデータ\n\n**注意点**:\n- ランタイムAPIを使用するとキャッシュ不可\n- 動的レンダリングのため、Suspenseでラップして段階的レンダリング\n\n### 4. ユーザー操作時\n\n**実装方法**: Client Component + useQuery + Route Handler\n\n**適用ケース**:\n- ボタンクリック時のデータフェッチ\n- フォーム送信後のデータ取得\n- タブ切り替え時のデータロード\n- 検索フォームのリアルタイム検索\n\n**重要**: 外部APIへのアクセスは必ずRoute Handlerを経由\n\n### 5. 依存クエリ\n\n**実装方法**: Client Component + useQuery + enabled\n\n**適用ケース**:\n- 前のクエリ結果に依存するデータフェッチ\n- 条件付きデータフェッチ\n- 段階的なデータロード\n\n**注意点**:\n- `enabled`オプションで条件を制御\n- 依存関係を明確にする\n\n### 6. プリフェッチ\n\n**実装方法**: Server Component + Link + prefetch or router.prefetch\n\n**適用ケース**:\n- ナビゲーションリンクの先読み\n- ユーザーが次に見る可能性が高いページのデータ\n\n**注意点**:\n- Linkコンポーネントはデフォルトでprefetch有効\n- router.prefetchで明示的にプリフェッチ可能\n\n## Route Handlerの使用ルール\n\n### 1. 外部APIへのアクセスは必ずRoute Handlerを経由\n\n**理由**:\n- APIキーやシークレットをクライアントに露出させない\n- CORSの問題を回避\n- レスポンスの正規化とエラーハンドリングの統一\n- レート制限やキャッシュの一元管理\n\n### 2. Route Handlerの配置\n\n```\napp/\n└── api/\n    ├── users/\n    │   └── route.ts\n    ├── products/\n    │   └── route.ts\n    └── search/\n        └── route.ts\n```\n\n### 3. Route HandlerからAPIクライアントを呼び出す\n\nRoute Handlerでは`apis`ディレクトリのAPIクライアントを使用する。\n\n## データフェッチコロケーションの原則\n\n### 1. データが必要なコンポーネントで直接フェッチ\n\n**メリット**:\n- コンポーネントの独立性が高まる\n- 再利用性と保守性が向上\n- データの依存関係が明確\n\n### 2. props drillingを避ける\n\nデータをpropsで深くバケツリレーするのではなく、必要なコンポーネントで直接フェッチする。\n\n### 3. Request Memoizationによる重複排除\n\nNext.js 16では、同一レンダー内の重複したfetchリクエストは自動的にメモ化されるため、複数のコンポーネントで同じデータをフェッチしても問題ない。\n\n## Server ActionsとServer Componentの使い分け\n\n### Server Component（データ取得）\n\n- 初回レンダリング時のデータ取得\n- 読み取り専用のデータフェッチ\n- キャッシュ可能なデータ\n\n### Server Actions（データ更新）\n\n- フォーム送信\n- データの作成・更新・削除\n- 楽観的更新（useOptimistic）との組み合わせ\n- キャッシュの無効化（updateTag/revalidateTag）\n\n## ベストプラクティス\n\n1. **Server Componentで直接データを取得** - 初回レンダリング時のデータはServer Componentで取得\n2. **use cacheで明示的にキャッシュ** - 必要な部分のみキャッシュを有効化\n3. **Route Handlerで外部APIを保護** - クライアントフェッチは必ずRoute Handlerを経由\n4. **データフェッチコロケーション** - データが必要なコンポーネントで直接フェッチ\n5. **Suspenseで段階的レンダリング** - 非同期コンポーネントはSuspenseでラップ\n6. **TanStack Queryでクライアントステート管理** - ユーザー操作時のデータフェッチとキャッシュ\n7. **Request Memoizationを信頼** - 同一レンダー内の重複リクエストは自動的にメモ化される",
+    "alternatives": [
+      {
+        "option": "全てをClient Component + TanStack Queryで取得（SPA方式）",
+        "pros": [
+          "実装がシンプル（従来のReactと同じ）",
+          "全てのデータフェッチをTanStack Queryで統一",
+          "クライアント側のキャッシュ管理が容易"
+        ],
+        "cons": [
+          "初期レンダリングが遅い（クライアント側でデータフェッチ）",
+          "SEO最適化が困難（データがHTMLに含まれない）",
+          "JavaScriptバンドルサイズが増加",
+          "Server Componentの利点を活かせない",
+          "APIキーをクライアントに露出するリスク（Route Handler経由でも回避可能だが、Server Componentの利点を放棄）"
+        ],
+        "rejected": true,
+        "reason": "Server Componentの利点（初期レンダリング速度、SEO最適化、バンドルサイズ削減）を放棄することになり、Next.js App Routerの思想に反する"
+      },
+      {
+        "option": "全てをServer Componentで取得（クライアントフェッチ禁止）",
+        "pros": [
+          "初期レンダリングが高速",
+          "SEO最適化が容易",
+          "JavaScriptバンドルサイズが最小"
+        ],
+        "cons": [
+          "ユーザー操作時のデータフェッチが困難",
+          "インタラクティブな機能が実装できない",
+          "依存クエリや条件付きフェッチが実装不可",
+          "TanStack Queryのキャッシュ機能を活用できない"
+        ],
+        "rejected": true,
+        "reason": "ユーザー操作時のデータフェッチが必要な実用的なアプリケーションでは現実的ではない"
+      },
+      {
+        "option": "Client Componentから直接外部APIを叩く（Route Handler不使用）",
+        "pros": [
+          "実装がシンプル（Route Handlerの実装不要）",
+          "レスポンスタイムが短い（中間層を経由しない）"
+        ],
+        "cons": [
+          "APIキーやシークレットがクライアントに露出する（重大なセキュリティリスク）",
+          "CORSの問題が発生する可能性",
+          "レート制限の管理が困難",
+          "エラーハンドリングやレスポンス正規化が分散する"
+        ],
+        "rejected": true,
+        "reason": "セキュリティリスクが高く、APIキーの露出は絶対に避けるべき。Route Handlerを経由することでセキュリティとエラーハンドリングの統一が可能"
+      },
+      {
+        "option": "page.tsxで全てのデータを取得してprops drillingで渡す",
+        "pros": [
+          "データフェッチが1箇所に集中",
+          "データの流れが追いやすい"
+        ],
+        "cons": [
+          "props drillingが深くなる（保守性低下）",
+          "コンポーネントの独立性が低下",
+          "データが不要なコンポーネントにもpropsを渡す必要がある",
+          "再利用性が低下"
+        ],
+        "rejected": true,
+        "reason": "データフェッチコロケーションの原則に反し、保守性と再利用性が低下する。Request Memoizationにより重複リクエストは自動的に排除されるため、コロケーションを優先すべき"
+      }
+    ],
+    "rationale": "## Server Component優先のデータ取得戦略の理由\n\n### 1. パフォーマンスの最適化\n\n- **初期レンダリング速度**: Server Componentでデータを取得することで、サーバー側で完全なHTMLを生成し、クライアントへの初期表示が高速化\n- **バンドルサイズ削減**: データフェッチロジックがServer Component内にあれば、クライアント側のJavaScriptバンドルに含まれない\n- **Request Memoization**: 同一レンダー内の重複リクエストは自動的にメモ化されるため、複数のコンポーネントで同じデータをフェッチしても効率的\n\n### 2. SEOの最適化\n\n- Server Componentで取得したデータは完全なHTMLとしてレンダリングされるため、検索エンジンのクローラーが正確にコンテンツを認識\n- 動的なメタデータの生成が容易\n\n### 3. セキュリティの向上\n\n- Server ComponentではAPIキーやDB接続情報をクライアントに露出せずに使用可能\n- Route Handlerを経由することで、外部APIへのアクセスを安全に制御\n- クライアント側のコードにシークレット情報が含まれないため、セキュリティリスクが大幅に低減\n\n### 4. 開発効率の向上\n\n- **データフェッチコロケーション**: データが必要なコンポーネントで直接フェッチすることで、データの依存関係が明確になり、保守性が向上\n- **props drillingの削減**: Request Memoizationにより重複リクエストは自動的に排除されるため、propsで深くバケツリレーする必要がない\n- **統一的なエラーハンドリング**: Route Handlerでエラーハンドリングとレスポンス正規化を一元管理\n\n### 5. キャッシュ戦略との統合\n\n- `use cache`との統合により、データの性質に応じた柔軟なキャッシュ戦略が可能\n- TanStack Queryとの使い分けにより、サーバー側とクライアント側のキャッシュを適切に管理\n- キャッシュの無効化（updateTag/revalidateTag）により、データの新鮮さを保ちながらパフォーマンスを最適化\n\n### 6. Next.js 16のベストプラクティスに準拠\n\n- フレームワークが推奨する「動的がデフォルト、必要に応じてキャッシュ」の思想に従う\n- Server Component優先の設計により、Next.js App Routerの利点を最大限に活用\n- 将来的なアップデートにも対応しやすい",
+    "consequences": [
+      "【メリット】初期レンダリングのパフォーマンスが向上（Server Componentでのデータ取得）",
+      "【メリット】SEO最適化が容易（完全なHTMLとして配信）",
+      "【メリット】セキュリティが向上（APIキーやシークレットをクライアントに露出しない）",
+      "【メリット】開発効率が向上（データフェッチコロケーション、props drillingの削減）",
+      "【メリット】キャッシュ戦略との統合が容易（use cache + TanStack Query）",
+      "【メリット】Request Memoizationにより重複リクエストが自動的に排除される",
+      "【メリット】Route Handlerによりエラーハンドリングとレスポンス正規化を一元管理",
+      "【メリット】データの依存関係が明確になり、保守性が向上",
+      "【デメリット】開発者がServer ComponentとClient Componentの使い分けを理解する必要がある",
+      "【デメリット】Route Handlerの実装が必要（クライアントフェッチの場合）",
+      "【デメリット】キャッシュ戦略を適切に設計しないと、古いデータ表示の問題が発生する可能性",
+      "【デメリット】データフェッチコロケーションにより、コンポーネント数が増える可能性"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "app/**/page.tsx",
+      "app/**/layout.tsx",
+      "app/**/_components/*.tsx",
+      "app/api/**/route.ts",
+      "components/**/*.tsx",
+      "apis/**/*.server.ts",
+      "apis/**/*.client.ts",
+      "hooks/useQuery*.ts"
+    ],
+    "affected_components": [
+      "All page components",
+      "All layout components",
+      "All Server Components with data fetching",
+      "All Client Components with data fetching",
+      "All Route Handlers",
+      "All API clients",
+      "All TanStack Query hooks"
+    ],
+    "code_patterns": [
+      "Server Component + fetch",
+      "Server Component + use cache",
+      "Client Component + useQuery",
+      "Route Handler + API client",
+      "Suspense + async component",
+      "cacheLife('days'|'hours'|'minutes'|'seconds')",
+      "updateTag / revalidateTag"
+    ],
+    "examples": [
+      {
+        "file": "examples/server-component-with-cache.tsx",
+        "description": "Server Componentでデータを取得し、use cacheでキャッシュする例",
+        "code": "// 商品一覧を1時間キャッシュ\nexport async function ProductList() {\n  'use cache';\n  cacheLife('hours');\n  cacheTag('products');\n\n  const products = await fetchProducts(); // サーバー側で直接フェッチ\n  return (\n    <ul>\n      {products.map(p => <ProductCard key={p.id} product={p} />)}\n    </ul>\n  );\n}"
+      },
+      {
+        "file": "examples/server-component-dynamic.tsx",
+        "description": "Server Componentで動的データを取得する例（キャッシュなし）",
+        "code": "// ユーザープロフィール（動的レンダリング）\nexport async function UserProfile({ userId }: { userId: string }) {\n  // キャッシュなし（cookies()やheaders()を使用）\n  const session = await getSession();\n  const user = await fetchUser(userId);\n  \n  return (\n    <div>\n      <h1>{user.name}</h1>\n      <p>{user.email}</p>\n    </div>\n  );\n}"
+      },
+      {
+        "file": "examples/client-component-with-usequery.tsx",
+        "description": "Client ComponentでTanStack Queryを使ってデータを取得する例",
+        "code": "// ユーザー操作時のデータフェッチ\n'use client';\n\nimport { useQuery } from '@tanstack/react-query';\nimport { searchProducts } from '@/apis/products.client';\n\nexport function SearchResults({ query }: { query: string }) {\n  const { data, isLoading, error } = useQuery({\n    queryKey: ['products', 'search', query],\n    queryFn: () => searchProducts(query), // Route Handlerを経由\n    enabled: query.length > 0,\n  });\n\n  if (isLoading) return <Loading />;\n  if (error) return <Error message={error.message} />;\n\n  return (\n    <ul>\n      {data?.products.map(p => <ProductCard key={p.id} product={p} />)}\n    </ul>\n  );\n}"
+      },
+      {
+        "file": "examples/route-handler.ts",
+        "description": "Route Handlerで外部APIを叩く例",
+        "code": "// app/api/products/search/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\nimport { searchProductsFromAPI } from '@/apis/products.server';\n\nexport async function GET(request: NextRequest) {\n  const searchParams = request.nextUrl.searchParams;\n  const query = searchParams.get('query');\n\n  if (!query) {\n    return NextResponse.json(\n      { error: 'Query parameter is required' },\n      { status: 400 }\n    );\n  }\n\n  try {\n    // サーバー側のAPIクライアントを使用（APIキーは環境変数から取得）\n    const products = await searchProductsFromAPI(query);\n    return NextResponse.json({ products });\n  } catch (error) {\n    console.error('Search error:', error);\n    return NextResponse.json(\n      { error: 'Failed to search products' },\n      { status: 500 }\n    );\n  }\n}"
+      },
+      {
+        "file": "examples/api-client-server.ts",
+        "description": "サーバー側のAPIクライアント例",
+        "code": "// apis/products.server.ts\nexport async function searchProductsFromAPI(query: string) {\n  const apiKey = process.env.EXTERNAL_API_KEY; // 環境変数から取得\n  const response = await fetch(\n    `https://api.example.com/products/search?q=${query}`,\n    {\n      headers: {\n        'Authorization': `Bearer ${apiKey}`,\n      },\n    }\n  );\n\n  if (!response.ok) {\n    throw new Error('Failed to search products');\n  }\n\n  return response.json();\n}"
+      },
+      {
+        "file": "examples/api-client-client.ts",
+        "description": "クライアント側のAPIクライアント例（Route Handler経由）",
+        "code": "// apis/products.client.ts\nexport async function searchProducts(query: string) {\n  // Route Handlerを経由（APIキーを露出しない）\n  const response = await fetch(`/api/products/search?query=${query}`);\n\n  if (!response.ok) {\n    throw new Error('Failed to search products');\n  }\n\n  return response.json();\n}"
+      },
+      {
+        "file": "examples/data-fetching-colocation.tsx",
+        "description": "データフェッチコロケーションの例",
+        "code": "// データが必要なコンポーネントで直接フェッチ\nexport async function ProductDetails({ productId }: { productId: string }) {\n  'use cache';\n  cacheLife('hours');\n  cacheTag('products', `product-${productId}`);\n\n  // このコンポーネントで直接データをフェッチ（props drillingを避ける）\n  const product = await fetchProduct(productId);\n\n  return (\n    <div>\n      <h1>{product.name}</h1>\n      <p>{product.description}</p>\n      <ProductReviews productId={productId} /> {/* 関連データも個別にフェッチ */}\n    </div>\n  );\n}\n\nasync function ProductReviews({ productId }: { productId: string }) {\n  'use cache';\n  cacheLife('minutes');\n  cacheTag('reviews', `reviews-${productId}`);\n\n  // レビューデータも個別にフェッチ（Request Memoizationで重複排除）\n  const reviews = await fetchReviews(productId);\n\n  return (\n    <ul>\n      {reviews.map(r => <ReviewCard key={r.id} review={r} />)}\n    </ul>\n  );\n}"
+      },
+      {
+        "file": "examples/suspense-streaming.tsx",
+        "description": "Suspenseで段階的レンダリングする例",
+        "code": "// page.tsx\nexport default function ProductPage({ params }: { params: { id: string } }) {\n  return (\n    <div>\n      {/* 静的部分は即座に表示 */}\n      <Header />\n      \n      {/* 動的部分はSuspenseでラップ */}\n      <Suspense fallback={<ProductSkeleton />}>\n        <ProductDetails productId={params.id} />\n      </Suspense>\n      \n      <Suspense fallback={<ReviewsSkeleton />}>\n        <ProductReviews productId={params.id} />\n      </Suspense>\n    </div>\n  );\n}"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "data-fetching",
+      "server-components",
+      "client-components",
+      "tanstack-query",
+      "route-handler",
+      "cache-strategy",
+      "use-cache",
+      "api-client",
+      "security",
+      "performance",
+      "seo",
+      "colocation",
+      "suspense",
+      "streaming",
+      "nextjs",
+      "nextjs-16",
+      "react",
+      "request-memoization",
+      "prefetch"
+    ],
+    "related_adrs": [
+      "ADR-0003",
+      "ADR-0005",
+      "ADR-0006",
+      "ADR-0008"
+    ],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "データ取得",
+    "data fetching",
+    "Server Component",
+    "Client Component",
+    "TanStack Query",
+    "React Query",
+    "Route Handler",
+    "API client",
+    "use cache",
+    "キャッシュ戦略",
+    "cache strategy",
+    "コロケーション",
+    "colocation",
+    "props drilling",
+    "Request Memoization",
+    "Suspense",
+    "ストリーミング",
+    "streaming",
+    "プリフェッチ",
+    "prefetch",
+    "初回レンダリング",
+    "initial rendering",
+    "ユーザー操作",
+    "user interaction",
+    "依存クエリ",
+    "dependent query",
+    "外部API",
+    "external API",
+    "APIキー",
+    "API key",
+    "セキュリティ",
+    "security",
+    "パフォーマンス",
+    "performance",
+    "SEO",
+    "動的レンダリング",
+    "dynamic rendering",
+    "静的レンダリング",
+    "static rendering",
+    "キャッシュ",
+    "cache",
+    "リアルタイム",
+    "realtime",
+    "マスタデータ",
+    "master data",
+    "ユーザー固有データ",
+    "user-specific data"
+  ],
+  "use_cases": {
+    "initial_render_static": {
+      "name": "初回レンダリング時（静的・キャッシュ可能）",
+      "implementation": "Server Component + use cache + cacheLife",
+      "examples": [
+        "マスタデータ（カテゴリ、タグ、設定）",
+        "静的コンテンツ（FAQ、利用規約）",
+        "商品一覧、記事一覧"
+      ],
+      "cache_profile": "days / hours / minutes",
+      "code_example": "async function MasterData() { 'use cache'; cacheLife('days'); ..."
+    },
+    "initial_render_dynamic": {
+      "name": "初回レンダリング時（動的・ユーザー依存）",
+      "implementation": "Server Component + use cache: private or 動的レンダリング + Suspense",
+      "examples": [
+        "ユーザープロフィール",
+        "ユーザー固有データ",
+        "パーソナライズされたコンテンツ"
+      ],
+      "cache_profile": "minutes (ユーザー固有でもキャッシュ可能)",
+      "code_example": "async function UserProfile() { const session = await getSession(); ..."
+    },
+    "initial_render_runtime_api": {
+      "name": "初回レンダリング時（ランタイムAPI使用）",
+      "implementation": "Server Component + 動的レンダリング + Suspense",
+      "examples": [
+        "cookies()やheaders()を使用",
+        "searchParamsを使用",
+        "リアルタイムデータ"
+      ],
+      "cache_profile": "キャッシュ不可",
+      "code_example": "async function DynamicPage() { const cookies = cookies(); ..."
+    },
+    "user_interaction": {
+      "name": "ユーザー操作時",
+      "implementation": "Client Component + useQuery + Route Handler",
+      "examples": [
+        "ボタンクリック時のデータフェッチ",
+        "フォーム送信後のデータ取得",
+        "タブ切り替え時のデータロード",
+        "検索フォームのリアルタイム検索"
+      ],
+      "cache_profile": "TanStack QueryのstaleTime/gcTime",
+      "code_example": "const { data } = useQuery({ queryKey: [...], queryFn: ... });"
+    },
+    "dependent_query": {
+      "name": "依存クエリ",
+      "implementation": "Client Component + useQuery + enabled",
+      "examples": [
+        "前のクエリ結果に依存するデータフェッチ",
+        "条件付きデータフェッチ",
+        "段階的なデータロード"
+      ],
+      "cache_profile": "TanStack QueryのstaleTime/gcTime",
+      "code_example": "const { data } = useQuery({ queryKey: [...], enabled: !!dependency });"
+    },
+    "prefetch": {
+      "name": "プリフェッチ",
+      "implementation": "Server Component + Link + prefetch or router.prefetch",
+      "examples": [
+        "ナビゲーションリンクの先読み",
+        "ユーザーが次に見る可能性が高いページのデータ"
+      ],
+      "cache_profile": "Router Cache",
+      "code_example": "<Link href=\"/products\" prefetch={true}>Products</Link>"
+    }
+  },
+  "best_practices": [
+    "Server Componentで直接データを取得する（初回レンダリング時）",
+    "use cacheで明示的にキャッシュする（必要な部分のみ）",
+    "Route Handlerで外部APIを保護する（APIキーを露出しない）",
+    "データフェッチコロケーションを実践する（データが必要なコンポーネントで取得）",
+    "Suspenseで段階的レンダリングする（非同期コンポーネントはSuspenseでラップ）",
+    "TanStack Queryでクライアントステート管理する（ユーザー操作時のデータフェッチ）",
+    "Request Memoizationを信頼する（同一レンダー内の重複リクエストは自動的にメモ化）",
+    "キャッシュプロファイルを適切に選択する（データの更新頻度に応じて）",
+    "Route Handlerでエラーハンドリングを統一する（レスポンス正規化とエラーハンドリング）",
+    "依存クエリはenabledオプションで制御する（条件付きフェッチ）"
+  ]
+}

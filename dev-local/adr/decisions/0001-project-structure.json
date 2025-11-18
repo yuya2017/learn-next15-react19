@@ -1,0 +1,190 @@
+{
+  "id": "ADR-0001",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "プロジェクト構造とディレクトリ構成の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js 15 App Routerを使用したプロジェクトにおいて、保守性・拡張性・可読性を確保するためのディレクトリ構造と設計原則が必要。従来のPages Routerとは異なるApp Routerの思想に沿った構造を定義する必要がある。",
+    "constraints": [
+      "Next.js 15 App Routerの仕様に準拠",
+      "Server ComponentsとClient Componentsの適切な分離",
+      "認証状態による画面の分離（privateとpublic）",
+      "コロケーション原則に従った機能単位の配置",
+      "TypeScript + React 19の型安全性の確保"
+    ],
+    "requirements": [
+      "画面・機能固有のコードを対応するpage.tsxと同階層に配置",
+      "汎用的なコードはsrc直下に配置",
+      "認証状態でレイアウトを分離",
+      "プライベートフォルダを活用した機能整理",
+      "バレルインポート禁止（@/ aliasを使用した個別インポート）",
+      "明確な命名規則の確立"
+    ]
+  },
+  "decision": {
+    "summary": "Featureベースのコロケーション原則に従い、画面・機能固有のファイルは対応するpage.tsxと同階層に配置。汎用的なファイルはsrc直下に配置。認証状態は(private)と(public)のルートグループで分離。プライベートフォルダ（_xxxxx）を活用して機能を整理。",
+    "details": "プロジェクトのディレクトリ構造は以下の通り：\n\nsrc/\n├─ app/                          # 画面・機能単位\n│  ├─ (private)/                 # ログイン必須\n│  │  ├─ actions/                # 固有Server Actions\n│  │  ├─ apis/                   # 固有APIクライアント\n│  │  ├─ components/             # 固有コンポーネント\n│  │  ├─ constants/              # 固有定数\n│  │  ├─ hooks/                  # 固有カスタムフック\n│  │  ├─ stores/                 # 固有ストア\n│  │  ├─ providers/              # 固有プロバイダー\n│  │  ├─ schemas/                # 固有スキーマ\n│  │  ├─ types/                  # 固有型定義\n│  │  ├─ utils/                  # 固有ユーティリティ関数\n│  │  └─ layout.tsx              # private用レイアウト\n│  │\n│  ├─ (public)/                  # ログイン任意\n│  │  └─ layout.tsx              # public用レイアウト\n│  │\n│  └─ api/                       # Route Handlers（クライアントフェッチのBFF用）\n│\n├─ actions/                      # 汎用Server Actions\n├─ apis/                         # 汎用APIクライアント\n├─ components/                   # 汎用コンポーネント\n├─ constants/                    # 汎用定数\n├─ hooks/                        # 汎用カスタムフック\n├─ stores/                       # グローバルストア\n├─ providers/                    # 汎用プロバイダー\n├─ lib/                          # ライブラリ関連\n├─ schemas/                      # 汎用スキーマ\n├─ types/                        # 汎用型定義\n└─ utils/                        # ユーティリティ関数\n\n設計原則：\n1. Featureベースの構成（コロケーション）\n2. プライベートフォルダの活用（_xxxxx）\n3. ルートグループによる認証の分離（(private)と(public)）",
+    "alternatives": [
+      {
+        "option": "従来のPages Router方式（pages/とcomponents/の完全分離）",
+        "pros": [
+          "シンプルなフォルダ構造",
+          "機能横断的なコンポーネントが探しやすい"
+        ],
+        "cons": [
+          "関連ファイルが離れた場所に配置される",
+          "保守性が低い（変更時に複数ディレクトリを横断）",
+          "App Routerのコロケーション思想に反する"
+        ],
+        "rejected": true,
+        "reason": "App Routerはコロケーション（関連ファイルを近くに配置）を推奨しており、保守性・可読性の観点からもFeatureベースの構成が優れている"
+      },
+      {
+        "option": "完全なフラット構造（すべてのファイルをsrc直下に配置）",
+        "pros": [
+          "ディレクトリ階層が浅い",
+          "ファイル検索が簡単"
+        ],
+        "cons": [
+          "ファイル数が増えると管理困難",
+          "機能の境界が不明確",
+          "スケーラビリティに欠ける"
+        ],
+        "rejected": true,
+        "reason": "大規模プロジェクトでは管理が困難。機能単位での整理が保守性向上に寄与する"
+      },
+      {
+        "option": "認証状態をlayoutで制御（ルートグループなし）",
+        "pros": [
+          "ディレクトリ構造がシンプル"
+        ],
+        "cons": [
+          "Full Route Cache（≒SSG）の適用が不確実",
+          "認証状態に応じたレイアウト切り替えが複雑",
+          "パフォーマンス最適化が困難"
+        ],
+        "rejected": true,
+        "reason": "ルートグループによる分離はNext.jsのベストプラクティスであり、Full Route Cacheの確実な適用とレイアウト管理の明確化に寄与する"
+      }
+    ],
+    "rationale": "Next.js 15 App Routerの思想に沿った構成を採用することで、以下のメリットを享受できる：\n1. コロケーション原則により、関連ファイルが近くに配置され、保守性・可読性が向上\n2. ルートグループによる認証の分離で、Full Route Cacheの確実な適用とレイアウト管理が明確\n3. プライベートフォルダの活用で、ルーティング対象外の機能を整理\n4. 汎用と固有の明確な分離により、コードの再利用性が向上\n5. 命名規則の統一により、開発者間での一貫性を確保",
+    "consequences": [
+      "【メリット】関連ファイルが同じディレクトリに配置されるため、変更時のファイル探索が容易",
+      "【メリット】機能単位でのコードレビューが行いやすい",
+      "【メリット】新しい機能追加時にディレクトリ構造が自然に拡張される",
+      "【メリット】認証状態に応じたレイアウトとキャッシュ戦略が明確",
+      "【メリット】プライベートフォルダによりルーティング対象外の機能整理が容易",
+      "【デメリット】ディレクトリ階層が深くなる場合がある（最大3-4階層）",
+      "【デメリット】同じ種類のファイル（例：すべてのコンポーネント）を一覧したい場合、複数ディレクトリを横断する必要がある",
+      "【デメリット】従来のPages Router方式に慣れた開発者には学習コストが発生"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "src/app/",
+      "src/app/(private)/",
+      "src/app/(public)/",
+      "src/app/api/",
+      "src/actions/",
+      "src/apis/",
+      "src/components/",
+      "src/constants/",
+      "src/hooks/",
+      "src/stores/",
+      "src/providers/",
+      "src/lib/",
+      "src/schemas/",
+      "src/types/",
+      "src/utils/"
+    ],
+    "affected_components": [
+      "All project components",
+      "Layout components",
+      "Page components",
+      "Server Actions",
+      "API clients",
+      "Utility functions"
+    ],
+    "code_patterns": [
+      "画面固有のコンポーネント: app/[route]/components/",
+      "画面固有のServer Actions: app/[route]/actions/",
+      "汎用コンポーネント: components/",
+      "汎用Server Actions: actions/",
+      "プライベートフォルダ: _xxxxx/",
+      "ルートグループ: (private)/, (public)/"
+    ],
+    "examples": [
+      {
+        "file": "src/app/(private)/todo/page.tsx",
+        "line_start": 1,
+        "line_end": 50,
+        "description": "Todo画面のページコンポーネント（privateルートグループ配下）"
+      },
+      {
+        "file": "src/app/(private)/todo/components/TodoList.tsx",
+        "line_start": 1,
+        "line_end": 50,
+        "description": "Todo画面固有のTodoListコンポーネント"
+      },
+      {
+        "file": "src/app/(private)/layout.tsx",
+        "line_start": 1,
+        "line_end": 30,
+        "description": "Private領域のレイアウトコンポーネント"
+      },
+      {
+        "file": "src/components/Button.tsx",
+        "line_start": 1,
+        "line_end": 30,
+        "description": "汎用Buttonコンポーネント"
+      },
+      {
+        "file": "src/app/api/todos/route.ts",
+        "line_start": 1,
+        "line_end": 30,
+        "description": "Todos API Route Handler（クライアントフェッチ用BFF）"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "project-structure",
+      "directory-structure",
+      "architecture",
+      "nextjs",
+      "app-router",
+      "colocation",
+      "route-groups",
+      "private-folders",
+      "naming-conventions"
+    ],
+    "related_adrs": ["ADR-0003"],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "プロジェクト構造",
+    "ディレクトリ構成",
+    "directory structure",
+    "project structure",
+    "コロケーション",
+    "colocation",
+    "ルートグループ",
+    "route groups",
+    "プライベートフォルダ",
+    "private folders",
+    "認証分離",
+    "authentication separation",
+    "app router",
+    "nextjs",
+    "命名規則",
+    "naming conventions",
+    "featureベース",
+    "feature-based",
+    "ファイル配置",
+    "file organization"
+  ],
+  "vector_embedding": null
+}

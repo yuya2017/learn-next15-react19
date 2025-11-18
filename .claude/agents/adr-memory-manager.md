@@ -108,7 +108,7 @@ The `index.json` file contains a searchable index:
       "tags": ["tag1", "tag2"],
       "keywords": ["keyword1", "keyword2"],
       "affected_components": ["Component1"],
-      "file_path": "docs/adr/decisions/0001-decision-name.json"
+      "file_path": "dev-local/adr/decisions/0001-decision-name.json"
     }
   ],
   "indices": {
@@ -142,7 +142,7 @@ The `index.json` file contains a searchable index:
 1. Detect decision context from code changes or discussions
 2. Extract relevant information (files, components, patterns)
 3. Generate ADR JSON structure
-4. Save to `docs/adr/decisions/`
+4. Save to `dev-local/adr/decisions/`
 5. Update `index.json`
 6. Update related ADRs if needed
 
@@ -150,8 +150,8 @@ The `index.json` file contains a searchable index:
 ```
 Trigger: Code change introduces new pattern
 Action: Analyze change, extract decision context
-Output: docs/adr/decisions/0001-use-server-components.json
-Update: docs/adr/index.json
+Output: dev-local/adr/decisions/0001-use-server-components.json
+Update: dev-local/adr/index.json
 ```
 
 ### 2. Retrieve ADR (Query-based)

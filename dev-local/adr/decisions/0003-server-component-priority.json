@@ -1,0 +1,225 @@
+{
+  "id": "ADR-0003",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "Server Component優先戦略とProps-based Control",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js 15 App RouterでReact Server ComponentsとClient Componentsをどのように使い分けるべきか。パフォーマンス、バンドルサイズ、保守性を最大化しながら、適切なコンポーネント設計を行う必要がある。特に、初期レンダリングのパフォーマンス、SEO最適化、クライアント側のJavaScriptバンドルサイズの削減が重要。",
+    "constraints": [
+      "Next.js 15 App Routerの仕様に準拠",
+      "React 19のServer ComponentsとClient Componentsの制約に従う",
+      "page.tsxは同期かつServer Componentとすること",
+      "Server Componentsはクライアント側のJavaScriptバンドルに含まれない",
+      "Client ComponentsはServer Componentsをインポートできない（Compositionパターンのみ）",
+      "ストリーミングとSuspenseを活用した段階的レンダリング"
+    ],
+    "requirements": [
+      "可能な限りServer Componentを優先",
+      "Client Componentは必要最小限（インタラクション、ブラウザAPI、React Hooks使用時のみ）",
+      "page.tsxで`await`や`use`を使用しない（Suspenseでラップされたコンポーネントに委譲）",
+      "非同期コンポーネントは必ずSuspenseでラップ",
+      "Client Component配下にServer Componentをネストする場合はCompositionパターン（children props）を使用",
+      "Props-based Controlによる制御の明示化"
+    ]
+  },
+  "decision": {
+    "summary": "Server Componentをデフォルトとし、ユーザーインタラクション、ブラウザAPI使用、React Hooks使用が必要な場合のみClient Componentを使用する。page.tsxは同期的なServer Componentとし、非同期処理はSuspenseでラップされたコンポーネントに委譲。Client Component配下にServer Componentを配置する場合はCompositionパターン（children props）を使用。Props-based Controlで制御を明示的に行う。",
+    "details": "## Server Component優先戦略\n\n### 基本原則\n1. **デフォルトはServer Component** - すべてのコンポーネントはデフォルトでServer Component\n2. **必要最小限のClient Component** - インタラクション、ブラウザAPI、React Hooksが必要な場合のみ`'use client'`を追加\n3. **Props-based Control** - Server ComponentからClient Componentへデータを渡す際は、Propsで制御を明示化\n\n### Server Componentのルール\n\n#### 1. page.tsxは同期かつServer Component\n- `await`や`use`は使用しない\n- 非同期処理はSuspenseでラップされたコンポーネントに委譲\n- データフェッチはPromiseとして渡し、子コンポーネントで`use()`を使用\n\n#### 2. ストリーミングとSuspenseの活用\n- 非同期コンポーネントは必ずSuspenseでラップ\n- リソース単位での分割を基本とする\n- フォールバックUIを提供して段階的レンダリング\n\n#### 3. エラーUIの部分的な出し分け\n- コンポーネント内でResult型を使用してエラーハンドリング\n- 画面全体をエラーUIで覆わず、部分的にエラーを表示\n\n### Client Componentのルール\n\n#### 1. Client Componentは必要最小限\n使用が必要なケース:\n- ユーザーインタラクション（onClick, onChange, onSubmitなど）\n- ブラウザAPI使用（usePathname, useSearchParams, useRouterなど）\n- React Hooks使用（useState, useEffect, useContext, カスタムフックなど）\n\n#### 2. Suspenseでのラップ\n- `use()`フックを使用する場合は必ずSuspenseでラップ\n- `useSearchParams()`を使用する場合も必ずSuspenseでラップ\n- 動的importを利用したClient Componentも必ずSuspenseでラップ\n\n#### 3. Compositionパターンの活用\n- Client Component配下にServer Componentをネストさせる場合、`children` propsでServer Componentを渡す\n- Client ComponentはServer Componentを直接インポートできない\n\n### Props-based Control\n\n- Server ComponentからClient Componentへデータを渡す際は、Propsで制御を明示化\n- Server Componentで取得したデータをPropsとして渡す\n- Client ComponentはPropsを受け取り、インタラクションを処理\n- データフェッチとUIロジックを分離",
+    "alternatives": [
+      {
+        "option": "Client Componentを中心とした設計（従来のSPAアプローチ）",
+        "pros": [
+          "全てのコンポーネントでReact Hooksが使用可能",
+          "開発者の学習コストが低い（従来のReactと同じ）",
+          "クライアント側でのデータフェッチが容易"
+        ],
+        "cons": [
+          "初期ロード時のJavaScriptバンドルサイズが大幅に増加",
+          "初期レンダリングのパフォーマンスが低下",
+          "SEO最適化が困難",
+          "サーバー側でのデータフェッチの利点を活かせない",
+          "Next.js App Routerの思想に反する"
+        ],
+        "rejected": true,
+        "reason": "Server Componentsの利点（バンドルサイズ削減、初期レンダリング速度、SEO最適化）を放棄することになり、Next.js App Routerの思想に反するため不適切。"
+      },
+      {
+        "option": "全てをServer Componentにする（インタラクション禁止）",
+        "pros": [
+          "最小限のJavaScriptバンドルサイズ",
+          "最速の初期レンダリング",
+          "SEO最適化が容易"
+        ],
+        "cons": [
+          "ユーザーインタラクションが実装できない",
+          "実用的なアプリケーションが構築不可能",
+          "フォーム送信やボタンクリックなどの基本機能が実装できない"
+        ],
+        "rejected": true,
+        "reason": "実用的なWebアプリケーションにはユーザーインタラクションが不可欠であり、現実的ではない。"
+      },
+      {
+        "option": "page.tsxで直接`await`を使用する",
+        "pros": [
+          "コードがシンプル",
+          "データフェッチが1箇所に集中"
+        ],
+        "cons": [
+          "データフェッチが完了するまでページ全体がブロックされる",
+          "段階的レンダリング（ストリーミング）ができない",
+          "複数のデータソースがある場合、最も遅いフェッチがボトルネックになる",
+          "ユーザー体験が低下"
+        ],
+        "rejected": true,
+        "reason": "ストリーミングの利点を放棄し、ユーザー体験が大幅に低下するため不適切。Suspenseとの組み合わせによる段階的レンダリングが推奨される。"
+      },
+      {
+        "option": "Client Component内にServer Componentを直接インポート",
+        "pros": [
+          "一見するとコードが簡潔に見える"
+        ],
+        "cons": [
+          "Reactの制約により実装不可能（Client ComponentはServer Componentをインポートできない）",
+          "バンドルエラーが発生"
+        ],
+        "rejected": true,
+        "reason": "技術的に実装不可能。Compositionパターン（children props）を使用する必要がある。"
+      }
+    ],
+    "rationale": "Server Component優先戦略を採用することで、以下のメリットを享受できる：\n\n1. **パフォーマンスの最適化**\n   - Server Componentsはクライアント側のJavaScriptバンドルに含まれないため、バンドルサイズが大幅に削減される\n   - 初期レンダリングがサーバー側で実行されるため、ユーザーへの初期表示が高速化\n   - ストリーミングとSuspenseにより段階的レンダリングが可能\n\n2. **SEOの最適化**\n   - Server Componentsは完全なHTMLとしてレンダリングされるため、検索エンジンのクローラーが正確にコンテンツを認識\n   - 動的なメタデータの生成が容易\n\n3. **セキュリティの向上**\n   - Server Componentsではサーバー側のコード（APIキー、データベースクエリなど）がクライアントに露出しない\n   - 機密情報を安全に扱える\n\n4. **開発効率の向上**\n   - Server Componentsで直接データベースやAPIにアクセス可能\n   - クライアント側のステート管理が最小限に\n   - Props-based Controlにより、データフェッチとUIロジックが明確に分離\n\n5. **保守性の向上**\n   - Compositionパターンにより、Server ComponentとClient Componentの境界が明確\n   - 責任の分離が明確になり、コードの理解が容易\n\n6. **Next.js App Routerの思想に沿った実装**\n   - フレームワークが推奨するベストプラクティスに従うことで、将来的なアップデートにも対応しやすい",
+    "consequences": [
+      "【メリット】クライアント側のJavaScriptバンドルサイズが大幅に削減される（Server Componentsはバンドルに含まれない）",
+      "【メリット】初期レンダリングのパフォーマンスが向上（サーバー側で事前にレンダリング）",
+      "【メリット】SEO最適化が容易（完全なHTMLとして配信）",
+      "【メリット】セキュリティが向上（サーバー側のコードがクライアントに露出しない）",
+      "【メリット】データフェッチが効率化（サーバー側で直接データベースやAPIにアクセス）",
+      "【メリット】Props-based Controlにより、データフェッチとUIロジックの責任が明確に分離",
+      "【メリット】Compositionパターンにより、Server ComponentとClient Componentの境界が明確",
+      "【メリット】ストリーミングとSuspenseにより段階的レンダリングが可能（UX向上）",
+      "【デメリット】開発者がServer ComponentとClient Componentの違いを理解する必要がある（学習コスト）",
+      "【デメリット】Client Component内でServer Componentを使用する際はCompositionパターンが必須（直接インポート不可）",
+      "【デメリット】React HooksはClient Componentでのみ使用可能（useState, useEffectなど）",
+      "【デメリット】Suspenseとエラーハンドリングの適切な設計が必要（複雑性が増す）"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "src/app/**/page.tsx",
+      "src/app/**/layout.tsx",
+      "src/app/**/_components/*.tsx",
+      "src/components/*.tsx"
+    ],
+    "affected_components": [
+      "All page components",
+      "All layout components",
+      "All Server Components",
+      "All Client Components",
+      "Data fetching components",
+      "Interactive components"
+    ],
+    "code_patterns": [
+      "Server Component（デフォルト）: ファイル先頭に'use client'なし",
+      "Client Component: ファイル先頭に'use client'を追加",
+      "page.tsx: 同期的なServer Component、非同期処理はSuspenseでラップされたコンポーネントに委譲",
+      "Suspenseでラップ: <Suspense fallback={...}><AsyncComponent /></Suspense>",
+      "Compositionパターン: <ClientComponent>{children}</ClientComponent>",
+      "Props-based Control: Server ComponentからClient ComponentへPropsでデータを渡す",
+      "Result型: { isSuccess: boolean, data?: T, errorMessage?: string }"
+    ],
+    "examples": [
+      {
+        "file": "src/app/(private)/todo/page.tsx",
+        "line_start": 1,
+        "line_end": 39,
+        "description": "【良い例】page.tsxは同期的なServer Component。データフェッチはPromiseとして渡し、Suspenseでラップされたコンポーネント（TodoListSection）で`use()`を使用。エラーハンドリングはResult型で部分的に表示。"
+      },
+      {
+        "file": "src/app/(private)/todo/_components/TodoClient.tsx",
+        "line_start": 1,
+        "line_end": 55,
+        "description": "【良い例】Client Component（'use client'）でユーザーインタラクション（フォーム送信、チェックボックスのトグル）を処理。Server Componentから初期データをPropsで受け取る（Props-based Control）。"
+      },
+      {
+        "file": "src/app/(private)/layout.tsx",
+        "line_start": 1,
+        "line_end": 11,
+        "description": "【良い例】Server ComponentのLayoutがClient Component（Sidebar）をインポート。Sidebarはchildren propsでServer Componentを受け取る（Compositionパターン）。"
+      },
+      {
+        "file": "src/app/(private)/_components/Sidebar.tsx",
+        "line_start": 1,
+        "line_end": 59,
+        "description": "【良い例】Client Component（'use client'）でブラウザAPI（usePathname）を使用。ナビゲーションのアクティブ状態を管理。"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "server-components",
+      "client-components",
+      "architecture",
+      "nextjs",
+      "react",
+      "app-router",
+      "performance",
+      "seo",
+      "suspense",
+      "streaming",
+      "composition-pattern",
+      "props-based-control",
+      "data-fetching",
+      "error-handling"
+    ],
+    "related_adrs": [
+      "ADR-0001",
+      "ADR-0004",
+      "ADR-0006",
+      "ADR-0007"
+    ],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "Server Component",
+    "Client Component",
+    "サーバーコンポーネント",
+    "クライアントコンポーネント",
+    "use client",
+    "Suspense",
+    "ストリーミング",
+    "streaming",
+    "Props-based Control",
+    "Compositionパターン",
+    "composition pattern",
+    "children props",
+    "page.tsx",
+    "非同期コンポーネント",
+    "async component",
+    "use hook",
+    "usePathname",
+    "useSearchParams",
+    "useState",
+    "useEffect",
+    "インタラクション",
+    "interaction",
+    "ブラウザAPI",
+    "browser API",
+    "React Hooks",
+    "データフェッチ",
+    "data fetching",
+    "エラーハンドリング",
+    "error handling",
+    "Result型",
+    "Result type",
+    "パフォーマンス",
+    "performance",
+    "SEO",
+    "バンドルサイズ",
+    "bundle size",
+    "初期レンダリング",
+    "initial rendering"
+  ],
+  "vector_embedding": null
+}

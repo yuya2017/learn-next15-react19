@@ -7,7 +7,7 @@ alwaysApply: true
 
 ### Next.js 16: 動的がデフォルト、必要な部分を明示的にキャッシュ
 
-Next.js 15から、Data CacheやRouter Cacheがデフォルトでオフになり、キャッシュはオプトイン（明示的な有効化が必要）という立ち位置になりました。
+Next.16から、Data CacheやRouter Cacheがデフォルトでオフになり、キャッシュはオプトイン（明示的な有効化が必要）という立ち位置になりました。
 
 **Next.js 16では、この考え方がさらに進化し、`use cache`ディレクティブによる細かい粒度でのキャッシュ制御が標準となります。**
 
@@ -20,7 +20,7 @@ Next.js 15から、Data CacheやRouter Cacheがデフォルトでオフになり
 
 ## キャッシュレイヤーの整理
 
-Next.js 15/16では、複数のキャッシュレイヤーが協調して動作します。それぞれの役割と特性を理解することで、適切なキャッシュ戦略を設計できます。
+Next.js 16では、複数のキャッシュレイヤーが協調して動作します。それぞれの役割と特性を理解することで、適切なキャッシュ戦略を設計できます。
 
 | キャッシュ名 | 場所 | 目的 | 期間 | 制御方法 | 優先度 |
 | --- | --- | --- | --- | --- | --- |
@@ -356,24 +356,24 @@ export async function UserMenu() {
 
 ## Router Cacheのルール
 
-Router Cacheは、クライアント側でページ遷移時のキャッシュを管理する仕組みです。Next.js 15では、ページセグメントのデフォルト `staleTime` が0秒になり、ページ遷移時に常に最新データが反映されるようになりました。
+Router Cacheは、クライアント側でページ遷移時のキャッシュを管理する仕組みです。Next.js 16では、ページセグメントのデフォルト `staleTime` が0秒になり、ページ遷移時に常に最新データが反映されるようになりました。
 
 ### Router Cacheは使用しない
 
 現状、Router Cacheは `next.config.ts` でプロジェクト全体に対する設定しかできません。アプリケーションには、静的なコンテンツページもあれば、リアルタイム性が求められるダッシュボードのようなページも混在します。
 
-## Data Cacheのルール（Legacy - Next.js 15）
+## Data Cacheのルール（Legacy - Next.js 16）
 
 > **⚠️ 注意**: Next.js 16では`use cache`が推奨されます。Data Cacheは後方互換性のために残されていますが、新規実装では`use cache`を使用してください。
 
-Data Cacheは、サーバー側でfetchリクエストの結果をキャッシュする仕組みです。Next.js 15からはデフォルトで無効になっています。
+Data Cacheは、サーバー側でfetchリクエストの結果をキャッシュする仕組みです。Next.js 16からはデフォルトで無効になっています。
 
 ### 1. Next.js 16への移行を推奨
 
 新規実装や既存コードの更新時は、Data Cacheから`use cache`への移行を推奨します。
 
 ```typescript
-// Before: Data Cache (Next.js 15)
+// Before: Data Cache (Next.js 16)
 export async function fetchPosts(): Promise<Result<Post[]>> {
   return await request<Post[]>('/api/posts', {
     next: {

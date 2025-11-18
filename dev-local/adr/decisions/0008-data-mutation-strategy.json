@@ -1,0 +1,350 @@
+{
+  "id": "ADR-0008",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "データ更新戦略の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js 16のApp Routerでは、データの更新（mutation）とキャッシュの無効化に複数の方法が存在し、それぞれに適切な使い分けが必要。Server Actionsによる更新、updateTag/revalidateTagによるキャッシュ無効化、useOptimisticによる楽観的更新、TanStack Queryのmutationなどがあるが、統一的な更新戦略がないと、プロジェクト全体で一貫性のない実装となり、保守性とユーザー体験が低下する。特に、キャッシュ戦略（ADR-0005）やデータ取得戦略（ADR-0007）との統合が重要。",
+    "constraints": [
+      "Next.js 16のApp Router仕様に準拠",
+      "React 19のServer ActionsとuseOptimisticの制約に従う",
+      "Server Actionsではサーバー側のリソース（DB、外部API）に直接アクセス可能",
+      "Client Componentではブラウザからのfetchのみ使用可能（直接DBアクセス不可）",
+      "キャッシュの無効化はupdateTag/revalidateTagを使用（ADR-0005）",
+      "データ取得はServer Component優先（ADR-0007）",
+      "エラーハンドリングはResult型で統一（ADR-0006）"
+    ],
+    "requirements": [
+      "データ更新はServer Actionsを経由する（セキュリティ確保）",
+      "キャッシュ無効化はupdateTag/revalidateTagで制御",
+      "楽観的更新はuseOptimisticで実装（UX向上）",
+      "複雑な要件はTanStack Queryに委任",
+      "Server Actionsは基本1つに集約（一連の処理で複数使わない）",
+      "各ユースケースに応じた実装パターンの定義"
+    ]
+  },
+  "decision": {
+    "summary": "データ更新はServer Actionsを中心に配置し、updateTag/revalidateTagでキャッシュを無効化する。ユーザー操作直後に即座に反映が必要な場合はupdateTag、次回リクエスト時の反映で問題ない場合はrevalidateTagを使用する。楽観的更新が必要な場合はuseOptimisticを組み合わせる。クライアントフェッチで取得したデータの更新や複雑な要件はTanStack QueryのmutationとonSuccessコールバックで対応する。",
+    "details": "## データ更新戦略の基本方針\n\n### 1. Next.js 16: use cache + updateTag/revalidateTag\n\nNext.js 16では、`use cache`でキャッシュされたデータを更新する場合、`updateTag`または`revalidateTag`でキャッシュを無効化する。\n\n- **updateTag**: ユーザー操作直後に即座に反映が必要（同期的にキャッシュを無効化し、即座に再取得）\n- **revalidateTag**: 次回リクエスト時の反映で問題ない（非同期的にキャッシュを無効化し、次回リクエスト時に再取得）\n\n### 2. Next/Reactの標準機能を優先\n\n基本的には、Next.js/Reactの標準機能を優先して使用する：\n\n- **Server Actions**: データの作成・更新・削除\n- **updateTag/revalidateTag**: キャッシュの無効化\n- **useOptimistic**: 楽観的更新（UX向上）\n\nこれらの組み合わせで大部分のユースケースをカバーできる。\n\n### 3. 複雑な要件はTanStack Queryに委任\n\nクライアントフェッチで取得したデータの更新や複雑な要件（リトライ、ロールバック、複数クエリの同時無効化など）は、TanStack Queryに委任する。\n\n- **useMutation**: データの作成・更新・削除\n- **onSuccess**: 成功時のキャッシュ無効化（invalidateQueries）\n- **onError**: エラー時のロールバック\n- **onMutate**: 楽観的更新\n\n### 4. 更新はServer Actionsを経由\n\n登録・更新系は必ずServer Actionsを経由する。これにより、セキュリティが確保され、エラーハンドリングの統一が可能になる。\n\n### 5. Server Actionsは基本1つに集約\n\n一連の処理でServer Actionsは複数使わず、基本1つにまとめる。これにより、トランザクション管理が容易になり、エラーハンドリングが統一される。\n\n## 主要ユースケースと実装方法\n\n### 1. Server Component + Server Actions + updateTag（即座に反映）\n\n**実装方法**: Server Component + Server Actions + updateTag\n\n**適用ケース**:\n- フォーム送信後に即座に結果を表示する必要がある\n- ユーザーが変更を即座に確認できる必要がある\n- リアルタイム性が重要な操作\n\n**特徴**:\n- 同期的にキャッシュを無効化し、即座に再取得\n- ユーザー体験が向上（待機時間なし）\n- パフォーマンスへの影響が大きい（即座に再取得）\n\n### 2. Server Component + Server Actions + revalidateTag（次回リクエスト時に反映）\n\n**実装方法**: Server Component + Server Actions + revalidateTag\n\n**適用ケース**:\n- バックグラウンドで更新され、次回アクセス時に反映されれば問題ない\n- 高頻度ではない更新\n- パフォーマンスを優先したい場合\n\n**特徴**:\n- 非同期的にキャッシュを無効化し、次回リクエスト時に再取得\n- パフォーマンスへの影響が小さい（バックグラウンドで処理）\n- ユーザーは次回アクセス時に更新を確認\n\n### 3. Server Component + Server Actions + useOptimistic（楽観的更新）\n\n**実装方法**: Server Component + Server Actions + useOptimistic\n\n**適用ケース**:\n- ユーザーインタラクションに対して即座にUIを更新したい\n- サーバーレスポンスを待たずに楽観的にUIを更新\n- いいねボタン、フォロー/アンフォローなどの高頻度操作\n\n**特徴**:\n- サーバーレスポンスを待たずにUIを即座に更新\n- Server Actionsが失敗した場合は自動的に元に戻る\n- ユーザー体験が大幅に向上（レスポンスの待機なし）\n\n### 4. Client Component + TanStack Query mutation（クライアントフェッチの更新）\n\n**実装方法**: Client Component + useMutation + onSuccess + invalidateQueries\n\n**適用ケース**:\n- クライアントフェッチで取得したデータの更新\n- 複雑な要件（リトライ、ロールバック、複数クエリの同時無効化）\n- ユーザー操作時の更新（ボタンクリック、フォーム送信など）\n\n**特徴**:\n- TanStack Queryのキャッシュと統合\n- リトライ、ロールバック、楽観的更新などの高度な機能\n- 複数クエリの同時無効化が容易\n\n### 5. Server Actions + TanStack Query invalidation（ハイブリッド）\n\n**実装方法**: Server Actions（更新） + TanStack Query（クライアント側キャッシュ無効化）\n\n**適用ケース**:\n- Server Actionsで更新し、クライアント側のTanStack Queryキャッシュも無効化したい\n- Server ComponentとClient Componentが混在している画面\n- キャッシュの二重管理が必要な場合\n\n**特徴**:\n- Server Actionsで更新後、手動でTanStack Queryのキャッシュを無効化\n- サーバー側とクライアント側の両方のキャッシュを管理\n- 実装が複雑になる可能性があるため、必要な場合のみ使用\n\n### 6. Server Actionsの集約（一連の処理を1つに）\n\n**実装方法**: Server Actions内で複数の処理を実行\n\n**適用ケース**:\n- フォーム送信後に複数のテーブルを更新\n- トランザクション管理が必要な操作\n- 複数のキャッシュタグを無効化する必要がある場合\n\n**特徴**:\n- 一連の処理を1つのServer Actionsにまとめる\n- トランザクション管理が容易\n- エラーハンドリングが統一される\n- 複数のServer Actionsを呼び出すよりもシンプル\n\n## updateTag vs revalidateTagの選択基準\n\n### updateTag（即座に反映）\n\n**使用ケース**:\n- ユーザーが変更を即座に確認する必要がある\n- リアルタイム性が重要な操作\n- 投稿の作成・編集・削除後に即座に一覧を更新\n- コメントの追加後に即座に表示\n\n**特徴**:\n- 同期的にキャッシュを無効化し、即座に再取得\n- パフォーマンスへの影響が大きい\n- ユーザー体験が向上\n\n### revalidateTag（次回リクエスト時に反映）\n\n**使用ケース**:\n- バックグラウンドで更新され、次回アクセス時に反映されれば問題ない\n- 高頻度ではない更新\n- パフォーマンスを優先したい場合\n- ログやアクティビティ履歴の更新\n\n**特徴**:\n- 非同期的にキャッシュを無効化し、次回リクエスト時に再取得\n- パフォーマンスへの影響が小さい\n- ユーザーは次回アクセス時に更新を確認\n\n## ベストプラクティス\n\n1. **Server Actionsを更新操作の中心に** - データの作成・更新・削除は基本的にServer Actionsを使用\n2. **updateTag/revalidateTagで適切にキャッシュ無効化** - 即座に反映が必要ならupdateTag、次回でよいならrevalidateTag\n3. **useOptimisticで楽観的更新** - ユーザー体験向上のため、高頻度操作には楽観的更新を検討\n4. **TanStack Queryは複雑な要件に限定** - 標準機能で対応できる場合はServer Actionsを優先\n5. **Server Actionsは1つに集約** - 一連の処理で複数のServer Actionsを使わず、基本1つにまとめる\n6. **エラーハンドリングはResult型で統一** - Server ActionsからはResult型を返し、コンポーネントで部分的にエラーUIを表示（ADR-0006）\n7. **キャッシュタグの粒度を適切に** - cacheTag('products')やcacheTag('products', `product-${id}`)で適切な粒度を設定\n8. **updateTagとrevalidateTagを混在させない** - 同じタグに対してupdateTagとrevalidateTagを混在させると混乱するため、統一する",
+    "alternatives": [
+      {
+        "option": "全てをClient Component + TanStack Queryで更新（SPA方式）",
+        "pros": [
+          "実装がシンプル（従来のReactと同じ）",
+          "全ての更新をTanStack Queryで統一",
+          "クライアント側のキャッシュ管理が容易",
+          "リトライやロールバックなどの高度な機能を活用"
+        ],
+        "cons": [
+          "Server Actionsの利点を活かせない（セキュリティ、サーバー側リソースへの直接アクセス）",
+          "Route Handlerの実装が必要（セキュリティ確保のため）",
+          "Next.js App Routerの思想に反する",
+          "Server ComponentとClient Componentの統合が困難"
+        ],
+        "rejected": true,
+        "reason": "Server Actionsの利点（セキュリティ、サーバー側リソースへの直接アクセス、トランザクション管理）を放棄することになり、Next.js App Routerの思想に反する"
+      },
+      {
+        "option": "router.refreshでページ全体を再読み込み（古い方式）",
+        "pros": [
+          "実装がシンプル",
+          "キャッシュ無効化の細かい制御が不要",
+          "全てのデータが確実に最新になる"
+        ],
+        "cons": [
+          "ページ全体がリロードされ、ユーザー体験が悪い",
+          "パフォーマンスへの影響が大きい",
+          "部分的な更新ができない",
+          "Next.js 16のベストプラクティスに反する"
+        ],
+        "rejected": true,
+        "reason": "ユーザー体験が悪く、パフォーマンスへの影響が大きい。updateTag/revalidateTagによる部分的なキャッシュ無効化が推奨される"
+      },
+      {
+        "option": "キャッシュを使わず、常に最新データを取得（キャッシュ無効化不要）",
+        "pros": [
+          "キャッシュ無効化の実装が不要",
+          "常に最新のデータを表示できる",
+          "実装がシンプル"
+        ],
+        "cons": [
+          "パフォーマンスが悪化する（毎回データを取得）",
+          "サーバー負荷が高くなる",
+          "ユーザー体験が低下する",
+          "Next.js 16のキャッシュ戦略を活かせない（ADR-0005）"
+        ],
+        "rejected": true,
+        "reason": "パフォーマンスとユーザー体験を犠牲にするため不採用。適切なキャッシュ戦略でバランスを取る（ADR-0005）"
+      },
+      {
+        "option": "Server Actions内で複数のServer Actionsを呼び出す（ネスト）",
+        "pros": [
+          "各Server Actionsの再利用が可能",
+          "処理を細かく分割できる"
+        ],
+        "cons": [
+          "トランザクション管理が複雑になる",
+          "エラーハンドリングが分散する",
+          "パフォーマンスへの影響（複数回のサーバーラウンドトリップ）",
+          "デバッグが困難"
+        ],
+        "rejected": true,
+        "reason": "一連の処理は1つのServer Actionsにまとめる方がトランザクション管理とエラーハンドリングが容易。再利用が必要な場合は、内部でユーティリティ関数を呼び出す"
+      }
+    ],
+    "rationale": "## Server Actions中心のデータ更新戦略の理由\n\n### 1. セキュリティの向上\n\n- Server Actionsではサーバー側のリソース（DB、外部API）に直接アクセス可能\n- APIキーやDB接続情報をクライアントに露出せずに使用可能\n- バリデーションとサニタイゼーションをサーバー側で実行\n\n### 2. トランザクション管理の容易さ\n\n- Server Actions内で複数のDB操作をトランザクションとして実行可能\n- エラー時のロールバックが容易\n- 一連の処理を1つのServer Actionsにまとめることで、トランザクション管理が統一される\n\n### 3. エラーハンドリングの統一\n\n- Result型を返すことで、エラーハンドリングが統一される（ADR-0006）\n- コンポーネントで部分的にエラーUIを表示\n- 予期せぬエラーはError Boundaryでハンドリング\n\n### 4. キャッシュ戦略との統合\n\n- updateTag/revalidateTagにより、キャッシュの無効化が容易（ADR-0005）\n- データの性質に応じた適切なキャッシュ無効化戦略を選択可能\n- Server ComponentとClient Componentの両方のキャッシュを管理\n\n### 5. ユーザー体験の向上\n\n- useOptimisticによる楽観的更新で、サーバーレスポンスを待たずにUIを更新\n- updateTagによる即座のキャッシュ無効化で、ユーザーが変更を即座に確認\n- revalidateTagによるバックグラウンド更新で、パフォーマンスを保ちながらデータを最新に保つ\n\n### 6. Next.js 16のベストプラクティスに準拠\n\n- フレームワークが推奨する「Server Actions + updateTag/revalidateTag」の思想に従う\n- Next.js App Routerの利点を最大限に活用\n- 将来的なアップデートにも対応しやすい",
+    "consequences": [
+      "【メリット】セキュリティが向上（Server Actionsでサーバーリソースへのアクセスをセキュアに管理）",
+      "【メリット】トランザクション管理が容易（Server Actions内で複数のDB操作をトランザクションとして実行）",
+      "【メリット】エラーハンドリングが統一される（Result型の使用）",
+      "【メリット】キャッシュ戦略との統合が容易（updateTag/revalidateTagによる適切なキャッシュ無効化）",
+      "【メリット】ユーザー体験が向上（useOptimisticによる楽観的更新）",
+      "【メリット】開発効率が向上（一連の処理を1つのServer Actionsにまとめることで実装がシンプルに）",
+      "【メリット】Next.js 16のベストプラクティスに準拠",
+      "【デメリット】開発者がServer ActionsとupdateTag/revalidateTagの使い分けを理解する必要がある",
+      "【デメリット】複雑な要件ではTanStack Queryとの併用が必要になる場合がある",
+      "【デメリット】キャッシュタグの粒度を適切に設計しないと、不要なキャッシュ無効化が発生する可能性",
+      "【デメリット】Server Actionsの実装が増えると、テストやデバッグが複雑になる可能性"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "app/**/actions/*.ts",
+      "app/**/page.tsx",
+      "app/**/_components/*.tsx",
+      "components/**/*.tsx",
+      "hooks/useMutation*.ts"
+    ],
+    "affected_components": [
+      "All Server Actions",
+      "All page components with forms",
+      "All Client Components with mutation",
+      "All TanStack Query mutation hooks"
+    ],
+    "code_patterns": [
+      "Server Actions + updateTag",
+      "Server Actions + revalidateTag",
+      "Server Actions + useOptimistic",
+      "useMutation + onSuccess + invalidateQueries",
+      "Server Actions + Result type"
+    ],
+    "examples": [
+      {
+        "file": "examples/server-action-with-updateTag.ts",
+        "description": "Server Actionsでデータを更新し、updateTagで即座にキャッシュを無効化する例",
+        "code": "// actions/updateProduct.ts\n'use server';\n\nimport { updateTag } from 'next/cache';\nimport { updateProductInDB } from '@/apis/products.server';\nimport { Result } from '@/types/result';\n\nexport async function updateProduct(\n  productId: string,\n  data: ProductUpdateInput\n): Promise<Result<Product>> {\n  try {\n    // 1. バリデーション\n    const validated = productSchema.parse(data);\n\n    // 2. DB更新\n    const product = await updateProductInDB(productId, validated);\n\n    // 3. 即座にキャッシュ無効化\n    updateTag('products');\n    updateTag(`product-${productId}`);\n\n    return { isSuccess: true, data: product };\n  } catch (error) {\n    return {\n      isSuccess: false,\n      errorMessage: 'Failed to update product',\n    };\n  }\n}"
+      },
+      {
+        "file": "examples/server-action-with-revalidateTag.ts",
+        "description": "Server Actionsでデータを更新し、revalidateTagで次回リクエスト時にキャッシュを無効化する例",
+        "code": "// actions/logActivity.ts\n'use server';\n\nimport { revalidateTag } from 'next/cache';\nimport { logActivityInDB } from '@/apis/activities.server';\nimport { Result } from '@/types/result';\n\nexport async function logActivity(\n  userId: string,\n  activity: ActivityInput\n): Promise<Result<Activity>> {\n  try {\n    // 1. アクティビティログを記録\n    const log = await logActivityInDB(userId, activity);\n\n    // 2. 次回リクエスト時にキャッシュを無効化（即座の反映は不要）\n    revalidateTag('activities');\n    revalidateTag(`user-${userId}-activities`);\n\n    return { isSuccess: true, data: log };\n  } catch (error) {\n    return {\n      isSuccess: false,\n      errorMessage: 'Failed to log activity',\n    };\n  }\n}"
+      },
+      {
+        "file": "examples/use-optimistic-update.tsx",
+        "description": "useOptimisticで楽観的更新を行う例",
+        "code": "// components/LikeButton.tsx\n'use client';\n\nimport { useOptimistic } from 'react';\nimport { likePost } from '@/actions/likePost';\n\ntype LikeButtonProps = {\n  postId: string;\n  initialLikes: number;\n  isLiked: boolean;\n};\n\nexport function LikeButton({ postId, initialLikes, isLiked }: LikeButtonProps) {\n  const [optimisticLikes, setOptimisticLikes] = useOptimistic(\n    { likes: initialLikes, isLiked },\n    (state, newIsLiked: boolean) => ({\n      likes: newIsLiked ? state.likes + 1 : state.likes - 1,\n      isLiked: newIsLiked,\n    })\n  );\n\n  async function handleLike() {\n    // 楽観的更新（即座にUIを更新）\n    setOptimisticLikes(!optimisticLikes.isLiked);\n\n    // Server Actionsを実行\n    const result = await likePost(postId, !optimisticLikes.isLiked);\n\n    // エラー時は自動的に元に戻る\n    if (!result.isSuccess) {\n      console.error(result.errorMessage);\n    }\n  }\n\n  return (\n    <button onClick={handleLike}>\n      {optimisticLikes.isLiked ? '❤️' : '🤍'} {optimisticLikes.likes}\n    </button>\n  );\n}"
+      },
+      {
+        "file": "examples/tanstack-query-mutation.tsx",
+        "description": "TanStack QueryのmutationでClient Componentからデータを更新する例",
+        "code": "// components/SearchForm.tsx\n'use client';\n\nimport { useMutation, useQueryClient } from '@tanstack/react-query';\nimport { searchProducts } from '@/apis/products.client';\n\ntype SearchFormProps = {\n  initialQuery: string;\n};\n\nexport function SearchForm({ initialQuery }: SearchFormProps) {\n  const queryClient = useQueryClient();\n\n  const mutation = useMutation({\n    mutationFn: (query: string) => searchProducts(query),\n    onSuccess: (data, variables) => {\n      // 成功時にクエリキャッシュを無効化\n      queryClient.invalidateQueries({ queryKey: ['products', 'search'] });\n    },\n    onError: (error) => {\n      console.error('Search failed:', error);\n    },\n  });\n\n  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {\n    e.preventDefault();\n    const formData = new FormData(e.currentTarget);\n    const query = formData.get('query') as string;\n    mutation.mutate(query);\n  }\n\n  return (\n    <form onSubmit={handleSubmit}>\n      <input name=\"query\" defaultValue={initialQuery} />\n      <button type=\"submit\" disabled={mutation.isPending}>\n        {mutation.isPending ? 'Searching...' : 'Search'}\n      </button>\n      {mutation.isError && <p>Error: {mutation.error.message}</p>}\n    </form>\n  );\n}"
+      },
+      {
+        "file": "examples/server-action-aggregation.ts",
+        "description": "Server Actions内で複数の処理を集約する例",
+        "code": "// actions/createPost.ts\n'use server';\n\nimport { updateTag } from 'next/cache';\nimport { createPostInDB, notifyFollowers } from '@/apis/posts.server';\nimport { Result } from '@/types/result';\n\nexport async function createPost(\n  userId: string,\n  data: PostCreateInput\n): Promise<Result<Post>> {\n  try {\n    // 1. バリデーション\n    const validated = postSchema.parse(data);\n\n    // 2. トランザクション開始\n    const post = await db.transaction(async (tx) => {\n      // 2-1. 投稿を作成\n      const newPost = await createPostInDB(tx, userId, validated);\n\n      // 2-2. フォロワーに通知\n      await notifyFollowers(tx, userId, newPost.id);\n\n      return newPost;\n    });\n\n    // 3. 複数のキャッシュタグを無効化\n    updateTag('posts');\n    updateTag(`user-${userId}-posts`);\n    updateTag('timeline');\n\n    return { isSuccess: true, data: post };\n  } catch (error) {\n    return {\n      isSuccess: false,\n      errorMessage: 'Failed to create post',\n    };\n  }\n}"
+      },
+      {
+        "file": "examples/hybrid-mutation.tsx",
+        "description": "Server Actionsで更新し、TanStack Queryのキャッシュも無効化する例",
+        "code": "// components/ProductForm.tsx\n'use client';\n\nimport { useQueryClient } from '@tanstack/react-query';\nimport { updateProduct } from '@/actions/updateProduct';\n\ntype ProductFormProps = {\n  productId: string;\n};\n\nexport function ProductForm({ productId }: ProductFormProps) {\n  const queryClient = useQueryClient();\n\n  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {\n    e.preventDefault();\n    const formData = new FormData(e.currentTarget);\n    const data = Object.fromEntries(formData);\n\n    // Server Actionsで更新（updateTagでサーバー側キャッシュも無効化）\n    const result = await updateProduct(productId, data);\n\n    if (result.isSuccess) {\n      // TanStack Queryのキャッシュも手動で無効化\n      queryClient.invalidateQueries({ queryKey: ['products', productId] });\n      queryClient.invalidateQueries({ queryKey: ['products', 'list'] });\n    } else {\n      console.error(result.errorMessage);\n    }\n  }\n\n  return <form onSubmit={handleSubmit}>{/* form fields */}</form>;\n}"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "data-mutation",
+      "server-actions",
+      "cache-invalidation",
+      "update-tag",
+      "revalidate-tag",
+      "use-optimistic",
+      "optimistic-update",
+      "tanstack-query",
+      "mutation",
+      "cache-strategy",
+      "user-experience",
+      "transaction-management",
+      "error-handling",
+      "result-type",
+      "nextjs",
+      "nextjs-16",
+      "react",
+      "react-19",
+      "security",
+      "performance"
+    ],
+    "related_adrs": [
+      "ADR-0005",
+      "ADR-0006",
+      "ADR-0007"
+    ],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "データ更新",
+    "data mutation",
+    "Server Actions",
+    "updateTag",
+    "revalidateTag",
+    "キャッシュ無効化",
+    "cache invalidation",
+    "楽観的更新",
+    "optimistic update",
+    "useOptimistic",
+    "TanStack Query",
+    "useMutation",
+    "invalidateQueries",
+    "トランザクション",
+    "transaction",
+    "エラーハンドリング",
+    "error handling",
+    "Result型",
+    "Result type",
+    "フォーム送信",
+    "form submission",
+    "データ作成",
+    "data creation",
+    "データ編集",
+    "data update",
+    "データ削除",
+    "data deletion",
+    "キャッシュタグ",
+    "cache tag",
+    "cacheTag",
+    "即座に反映",
+    "immediate update",
+    "次回リクエスト時",
+    "next request",
+    "バックグラウンド更新",
+    "background update",
+    "ユーザー体験",
+    "user experience",
+    "セキュリティ",
+    "security",
+    "パフォーマンス",
+    "performance",
+    "一連の処理",
+    "aggregated process",
+    "Server Actionsの集約",
+    "Server Actions aggregation"
+  ],
+  "use_cases": {
+    "server_action_with_updateTag": {
+      "name": "Server Actions + updateTag（即座に反映）",
+      "implementation": "Server Actions + updateTag",
+      "examples": [
+        "投稿の作成・編集・削除後に即座に一覧を更新",
+        "コメントの追加後に即座に表示",
+        "ユーザーが変更を即座に確認する必要がある操作"
+      ],
+      "characteristics": [
+        "同期的にキャッシュを無効化し、即座に再取得",
+        "ユーザー体験が向上（待機時間なし）",
+        "パフォーマンスへの影響が大きい"
+      ],
+      "code_example": "updateTag('products'); updateTag(`product-${id}`);"
+    },
+    "server_action_with_revalidateTag": {
+      "name": "Server Actions + revalidateTag（次回リクエスト時に反映）",
+      "implementation": "Server Actions + revalidateTag",
+      "examples": [
+        "ログやアクティビティ履歴の更新",
+        "バックグラウンドで更新され、次回アクセス時に反映されれば問題ない",
+        "高頻度ではない更新"
+      ],
+      "characteristics": [
+        "非同期的にキャッシュを無効化し、次回リクエスト時に再取得",
+        "パフォーマンスへの影響が小さい",
+        "ユーザーは次回アクセス時に更新を確認"
+      ],
+      "code_example": "revalidateTag('activities'); revalidateTag(`user-${userId}-activities`);"
+    },
+    "use_optimistic_update": {
+      "name": "Server Actions + useOptimistic（楽観的更新）",
+      "implementation": "Server Actions + useOptimistic",
+      "examples": [
+        "いいねボタン",
+        "フォロー/アンフォロー",
+        "高頻度操作でユーザーが即座に結果を確認したい"
+      ],
+      "characteristics": [
+        "サーバーレスポンスを待たずにUIを即座に更新",
+        "Server Actionsが失敗した場合は自動的に元に戻る",
+        "ユーザー体験が大幅に向上"
+      ],
+      "code_example": "const [optimistic, setOptimistic] = useOptimistic(initial, updater);"
+    },
+    "tanstack_query_mutation": {
+      "name": "Client Component + TanStack Query mutation",
+      "implementation": "useMutation + onSuccess + invalidateQueries",
+      "examples": [
+        "クライアントフェッチで取得したデータの更新",
+        "複雑な要件（リトライ、ロールバック、複数クエリの同時無効化）",
+        "ユーザー操作時の更新（検索フォーム、フィルタ）"
+      ],
+      "characteristics": [
+        "TanStack Queryのキャッシュと統合",
+        "リトライ、ロールバック、楽観的更新などの高度な機能",
+        "複数クエリの同時無効化が容易"
+      ],
+      "code_example": "const mutation = useMutation({ mutationFn, onSuccess: () => invalidateQueries(...) });"
+    },
+    "hybrid_mutation": {
+      "name": "Server Actions + TanStack Query invalidation（ハイブリッド）",
+      "implementation": "Server Actions（更新） + TanStack Query（クライアント側キャッシュ無効化）",
+      "examples": [
+        "Server Actionsで更新し、クライアント側のTanStack Queryキャッシュも無効化",
+        "Server ComponentとClient Componentが混在している画面",
+        "キャッシュの二重管理が必要な場合"
+      ],
+      "characteristics": [
+        "Server Actionsで更新後、手動でTanStack Queryのキャッシュを無効化",
+        "サーバー側とクライアント側の両方のキャッシュを管理",
+        "実装が複雑になる可能性があるため、必要な場合のみ使用"
+      ],
+      "code_example": "await updateProduct(id, data); queryClient.invalidateQueries({ queryKey: ['products'] });"
+    },
+    "server_action_aggregation": {
+      "name": "Server Actionsの集約（一連の処理を1つに）",
+      "implementation": "Server Actions内で複数の処理を実行",
+      "examples": [
+        "フォーム送信後に複数のテーブルを更新",
+        "トランザクション管理が必要な操作",
+        "複数のキャッシュタグを無効化する必要がある場合"
+      ],
+      "characteristics": [
+        "一連の処理を1つのServer Actionsにまとめる",
+        "トランザクション管理が容易",
+        "エラーハンドリングが統一される",
+        "複数のServer Actionsを呼び出すよりもシンプル"
+      ],
+      "code_example": "await db.transaction(async (tx) => { /* 複数の処理 */ }); updateTag('tag1'); updateTag('tag2');"
+    }
+  },
+  "best_practices": [
+    "Server Actionsを更新操作の中心に配置する（セキュリティとトランザクション管理）",
+    "updateTag/revalidateTagで適切にキャッシュ無効化する（即座に反映が必要ならupdateTag、次回でよいならrevalidateTag）",
+    "useOptimisticで楽観的更新を実装する（ユーザー体験向上のため、高頻度操作には楽観的更新を検討）",
+    "TanStack Queryは複雑な要件に限定する（標準機能で対応できる場合はServer Actionsを優先）",
+    "Server Actionsは1つに集約する（一連の処理で複数のServer Actionsを使わず、基本1つにまとめる）",
+    "エラーハンドリングはResult型で統一する（Server ActionsからはResult型を返し、コンポーネントで部分的にエラーUIを表示）",
+    "キャッシュタグの粒度を適切に設定する（cacheTag('products')やcacheTag('products', `product-${id}`)で適切な粒度を設定）",
+    "updateTagとrevalidateTagを混在させない（同じタグに対してupdateTagとrevalidateTagを混在させると混乱するため、統一する）",
+    "トランザクションが必要な場合はServer Actions内でdb.transactionを使用する（複数のDB操作を1つのトランザクションとして実行）",
+    "Server Actionsのバリデーションは必ず実装する（zodなどでバリデーションし、Result型でエラーを返す）"
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "id": "ADR-0006",
+  "timestamp": "2025-11-18T00:00:00Z",
+  "title": "エラーハンドリング戦略（Result型）の決定",
+  "status": "accepted",
+  "context": {
+    "problem": "Next.js App Routerにおけるエラーハンドリングの最適な方法を決定する必要がある。従来のtry-catchやthrowによるエラーハンドリングでは、Error Boundaryが発動して画面全体がエラーUIで覆われてしまう。ユーザー体験を向上させるため、想定済みエラーと予期せぬエラーを明確に区別し、部分的なエラー表示を実現する必要がある。また、型安全なエラーハンドリングと、サーバー側でのエラー内容の正規化も重要な課題である。",
+    "constraints": [
+      "Next.js 15 App RouterのError Boundary機能（error.tsx, global-error.tsx）を活用",
+      "Server Componentsでは例外を投げるとError Boundaryが発動",
+      "Server Actionsの戻り値は型安全に扱う必要がある",
+      "クライアントに機密情報（スタックトレース、内部エラーメッセージなど）を露出してはならない",
+      "部分的なエラー表示により、ページ全体がエラーで使用不可にならないようにする"
+    ],
+    "requirements": [
+      "想定済みエラー（バリデーションエラー、業務エラーなど）はthrowせずにResult型で返す",
+      "予期せぬエラー（システムエラー、想定外の例外）はError Boundaryでハンドリング",
+      "コンポーネント単位で部分的にエラーUIを表示",
+      "型安全なエラーハンドリング（TypeScriptの型推論を活用）",
+      "サーバー側でエラー内容を正規化し、安全なUI用メッセージに変換",
+      "エラーの分類を明確にする（想定済み vs 予期せぬ）"
+    ]
+  },
+  "decision": {
+    "summary": "想定済みエラー（バリデーションエラー、業務エラーなど）はResult型で返し、コンポーネント単位で部分的にエラーUIを表示する。予期せぬエラー（システムエラー、想定外の例外）はerror.txsとglobal-error.tsxのError Boundary機能でハンドリングする。Result型は`{ isSuccess: boolean, data?: T, errorMessage?: string }`の形式とし、型安全なエラーハンドリングを実現する。",
+    "details": "## エラーハンドリング戦略\n\n### 基本原則\n\n1. **想定済みエラーはResult型で返す**\n   - バリデーションエラー、業務エラー、404などの想定内のエラーは`throw`せずにResult型で返す\n   - Server Actions、APIクライアント、データフェッチ関数でResult型を使用\n   - 型安全性により、エラーハンドリングの漏れを防ぐ\n\n2. **コンポーネントで部分的にエラーUIを表示**\n   - 画面全体をエラーUIで覆わず、コンポーネント単位で部分的にエラーを表示\n   - Result型の`isSuccess`フィールドで条件分岐し、エラーメッセージを表示\n   - ユーザーは他の機能を継続して使用可能\n\n3. **予期せぬエラーはError Boundaryでハンドリング**\n   - `error.tsx`：ルートセグメント固有のエラー（特定ページやレイアウト配下のエラー）\n   - `global-error.tsx`：アプリケーション全体のエラー（ルートレイアウトのエラーなど）\n   - システムエラー、想定外の例外、ネットワークエラーなど\n\n4. **エラー内容の正規化**\n   - サーバー側でエラー内容を正規化し、安全なUI用メッセージに変換\n   - スタックトレース、内部エラーメッセージ、機密情報をクライアントに露出しない\n   - ユーザーフレンドリーなエラーメッセージを提供\n\n### Result型の定義\n\n```typescript\ntype SuccessResult<T> = {\n  isSuccess: true;\n  data: T;\n};\n\ntype ErrorResult = {\n  isSuccess: false;\n  errorMessage: string;\n};\n\nexport type Result<T> = SuccessResult<T> | ErrorResult;\n```\n\n- **SuccessResult**: 成功時は`isSuccess: true`と`data`を持つ\n- **ErrorResult**: 失敗時は`isSuccess: false`と`errorMessage`を持つ\n- **Union型**: TypeScriptの型推論により、`isSuccess`で分岐後は適切な型が推論される\n\n### ヘルパー関数\n\n```typescript\nexport function success<T>(data: T): SuccessResult<T> {\n  return { isSuccess: true, data };\n}\n\nexport function failure(errorMessage: string): ErrorResult {\n  return { isSuccess: false, errorMessage };\n}\n```\n\n### エラーの分類\n\n| エラー分類 | 例 | ハンドリング方法 |\n|-----------|---|------------------|\n| **想定済みエラー** | バリデーションエラー、業務エラー、404 Not Found、権限エラー | Result型で返す → コンポーネントで部分的にエラーUI表示 |\n| **予期せぬエラー** | システムエラー、想定外の例外、ネットワークエラー、データベースエラー | Error Boundaryでハンドリング（error.tsx, global-error.tsx） |\n\n### 実装パターン\n\n#### 1. Server ActionsでのResult型の使用\n\n```typescript\n'use server';\n\nimport { success, failure } from '@/lib/result';\nimport type { Result } from '@/types/result';\n\nexport async function createTodo(payload: CreateTodoPayload): Promise<Result<Todo>> {\n  const trimmedTitle = payload.title.trim();\n  \n  // バリデーションエラー（想定済み）はResult型で返す\n  if (!trimmedTitle) {\n    return failure('タイトルを入力してください');\n  }\n  \n  const result = await createTodoApi({ title: trimmedTitle });\n  \n  if (!result.isSuccess) {\n    return result; // APIエラーもResult型で伝播\n  }\n  \n  updateTag('todos');\n  return result;\n}\n```\n\n#### 2. コンポーネントでの部分的エラー表示\n\n```typescript\nfunction TodoListSection({ todosPromise }: { todosPromise: Promise<Result<Todo[]>> }) {\n  const result = use(todosPromise);\n  \n  // エラー時は部分的にエラーUIを表示（画面全体は影響なし）\n  if (!result.isSuccess) {\n    return (\n      <div className=\"rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700\">\n        TODOの取得に失敗しました: {result.errorMessage}\n      </div>\n    );\n  }\n  \n  return <TodoClient initialTodos={result.data} />;\n}\n```\n\n#### 3. Error Boundaryの使用（error.tsx）\n\n```typescript\n'use client';\n\nexport default function Error({\n  error,\n  reset,\n}: {\n  error: Error & { digest?: string };\n  reset: () => void;\n}) {\n  return (\n    <div className=\"flex flex-col items-center justify-center gap-4 p-8\">\n      <h2 className=\"text-xl font-semibold\">エラーが発生しました</h2>\n      <p className=\"text-gray-600\">申し訳ございませんが、エラーが発生しました。</p>\n      <button\n        onClick={reset}\n        className=\"rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600\"\n      >\n        再試行\n      </button>\n    </div>\n  );\n}\n```\n\n#### 4. Global Error Boundary（global-error.tsx）\n\n```typescript\n'use client';\n\nexport default function GlobalError({\n  error,\n  reset,\n}: {\n  error: Error & { digest?: string };\n  reset: () => void;\n}) {\n  return (\n    <html>\n      <body>\n        <div className=\"flex min-h-screen flex-col items-center justify-center gap-4 p-8\">\n          <h2 className=\"text-xl font-semibold\">アプリケーションエラー</h2>\n          <p className=\"text-gray-600\">予期しないエラーが発生しました。</p>\n          <button\n            onClick={reset}\n            className=\"rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600\"\n          >\n            再読み込み\n          </button>\n        </div>\n      </body>\n    </html>\n  );\n}\n```\n\n### エラーハンドリングのフロー\n\n1. **Server ActionsやAPIクライアント**\n   - 想定済みエラー → Result型（`failure()`）で返す\n   - 予期せぬエラー → `throw`（Error Boundaryでキャッチ）\n\n2. **コンポーネント**\n   - Result型を受け取り、`isSuccess`で分岐\n   - 失敗時は部分的にエラーUIを表示\n   - 予期せぬエラーは上位のError Boundaryでキャッチ\n\n3. **Error Boundary**\n   - `error.tsx`：ルートセグメント固有のエラー\n   - `global-error.tsx`：アプリケーション全体のエラー",
+    "alternatives": [
+      {
+        "option": "全てthrowでエラーを投げる（Error Boundary中心）",
+        "pros": [
+          "コードがシンプル（try-catch、throwの標準パターン）",
+          "Error Boundaryが自動的にエラーをキャッチ",
+          "従来のReactのエラーハンドリングと同じ"
+        ],
+        "cons": [
+          "Error Boundaryが発動すると画面全体がエラーUIで覆われる",
+          "想定済みエラー（バリデーションエラーなど）も画面全体のエラーになる",
+          "部分的なエラー表示ができない",
+          "ユーザー体験が大幅に低下（他の機能が使用不可になる）",
+          "型安全性が低い（エラーの型が`Error`で抽象的）"
+        ],
+        "rejected": true,
+        "reason": "想定済みエラーまでError Boundaryでハンドリングすると、画面全体がエラーUIで覆われ、ユーザー体験が大幅に低下する。バリデーションエラーや業務エラーは部分的に表示すべきであり、Error Boundaryの過剰使用は避けるべき。"
+      },
+      {
+        "option": "try-catchでエラーハンドリング（例外処理中心）",
+        "pros": [
+          "JavaScriptの標準的なエラーハンドリング",
+          "エラーの詳細情報（スタックトレース）が取得可能"
+        ],
+        "cons": [
+          "Server Componentsでtry-catchを使うと、エラー時にSuspenseのフォールバックに戻らない",
+          "型安全性が低い（catchブロックのエラーは`unknown`型）",
+          "エラーの分類（想定済み vs 予期せぬ）が不明確",
+          "コンポーネント内でエラーハンドリングのコードが冗長になる"
+        ],
+        "rejected": true,
+        "reason": "Server Componentsとの相性が悪く、型安全性も低い。Result型を使用することで、型推論によりエラーハンドリングの漏れを防ぎ、コードの可読性も向上する。"
+      },
+      {
+        "option": "エラーをグローバルステートで管理",
+        "pros": [
+          "エラー状態を集中管理できる",
+          "複数コンポーネントでエラーを共有可能"
+        ],
+        "cons": [
+          "グローバルステートの肥大化",
+          "エラーのライフサイクル管理が複雑",
+          "Server Componentsとの相性が悪い",
+          "コンポーネント間の依存関係が増える",
+          "テストが困難"
+        ],
+        "rejected": true,
+        "reason": "Server ComponentsではuseContextやグローバルステートが使用できない。また、エラーは基本的にローカルな問題であり、グローバルに管理する必要性は低い。Result型で局所的にハンドリングする方がシンプルで保守性が高い。"
+      },
+      {
+        "option": "Either型やOption型などの関数型プログラミングのパターン",
+        "pros": [
+          "関数型プログラミングのベストプラクティス",
+          "エラーハンドリングが強制される",
+          "合成可能なエラーハンドリング"
+        ],
+        "cons": [
+          "学習コストが高い",
+          "JavaScriptエコシステムでは一般的でない",
+          "チーム全体での理解が必要",
+          "複雑なライブラリの導入が必要"
+        ],
+        "rejected": true,
+        "reason": "Either型やOption型は強力だが、JavaScriptエコシステムでは一般的でなく、学習コストが高い。Result型はEither型のシンプル版であり、必要十分な機能を提供しつつ、チーム全体での理解が容易。"
+      }
+    ],
+    "rationale": "Result型を採用することで、以下のメリットを享受できる：\n\n1. **型安全なエラーハンドリング**\n   - TypeScriptの型推論により、`isSuccess`で分岐後は適切な型が推論される\n   - `data`や`errorMessage`にアクセス時に型エラーが発生しない\n   - エラーハンドリングの漏れをコンパイル時に検出\n\n2. **部分的なエラー表示によるUX向上**\n   - 想定済みエラーはコンポーネント単位で部分的に表示\n   - 画面全体がエラーで使用不可にならない\n   - ユーザーは他の機能を継続して使用可能\n\n3. **エラーの分類が明確**\n   - 想定済みエラー（Result型）vs 予期せぬエラー（Error Boundary）\n   - エラーの種類に応じた適切なハンドリングが可能\n   - コードレビュー時にエラーハンドリングの意図が明確\n\n4. **Error Boundaryの適切な活用**\n   - Error Boundaryは予期せぬエラー（システムエラー）のみに使用\n   - 想定済みエラーまでError Boundaryでハンドリングしないため、過剰なエラーUI表示を防ぐ\n   - ユーザー体験の大幅な向上\n\n5. **セキュリティの向上**\n   - サーバー側でエラー内容を正規化し、安全なUI用メッセージに変換\n   - スタックトレース、内部エラーメッセージ、機密情報をクライアントに露出しない\n   - ユーザーフレンドリーなエラーメッセージを提供\n\n6. **テストが容易**\n   - Result型は単純なオブジェクトであり、テストが容易\n   - try-catchのような副作用がないため、テストコードがシンプル\n   - モックやスタブの作成が容易\n\n7. **Server Componentsとの相性が良い**\n   - Server Componentsでthrowすると、クライアントに例外が伝播してError Boundaryが発動\n   - Result型を使用することで、Server Componentsでも型安全にエラーを返せる\n   - Suspenseとの組み合わせもスムーズ",
+    "consequences": [
+      "【メリット】型安全なエラーハンドリングが実現され、エラーハンドリングの漏れをコンパイル時に検出",
+      "【メリット】部分的なエラー表示により、ユーザー体験が大幅に向上（画面全体がエラーで使用不可にならない）",
+      "【メリット】エラーの分類（想定済み vs 予期せぬ）が明確になり、適切なハンドリングが可能",
+      "【メリット】Error Boundaryの過剰使用を防ぎ、予期せぬエラーのみをハンドリング",
+      "【メリット】セキュリティが向上（機密情報をクライアントに露出しない）",
+      "【メリット】テストが容易（Result型は単純なオブジェクト）",
+      "【メリット】Server Componentsとの相性が良い（型安全にエラーを返せる）",
+      "【メリット】コードの可読性が向上（エラーハンドリングの意図が明確）",
+      "【デメリット】Result型の導入により、開発者が新しいパターンを学習する必要がある",
+      "【デメリット】全ての関数でResult型を返す必要があり、コード量が増える（ヘルパー関数で軽減）",
+      "【デメリット】エラーハンドリングの責任がコンポーネントに委譲されるため、各コンポーネントでエラーUIを実装する必要がある",
+      "【デメリット】既存のtry-catchパターンに慣れている開発者には、最初は違和感がある可能性"
+    ]
+  },
+  "implementation": {
+    "affected_files": [
+      "src/types/result.ts",
+      "src/lib/result.ts",
+      "src/app/**/_actions/*.ts",
+      "src/app/**/_apis/*.ts",
+      "src/app/**/page.tsx",
+      "src/app/**/error.tsx",
+      "src/app/global-error.tsx"
+    ],
+    "affected_components": [
+      "All Server Actions",
+      "All API clients",
+      "All page components",
+      "All Server Components with data fetching",
+      "Error Boundary components"
+    ],
+    "code_patterns": [
+      "Result型の定義: type Result<T> = SuccessResult<T> | ErrorResult",
+      "成功時: success<T>(data: T): SuccessResult<T>",
+      "失敗時: failure(errorMessage: string): ErrorResult",
+      "Server Actions: async function actionName(): Promise<Result<T>>",
+      "コンポーネント: if (!result.isSuccess) { return <ErrorUI /> }",
+      "Error Boundary: error.tsx, global-error.tsx"
+    ],
+    "examples": [
+      {
+        "file": "src/types/result.ts",
+        "line_start": 1,
+        "line_end": 11,
+        "description": "Result型の定義。SuccessResult<T>とErrorResultのUnion型。TypeScriptの型推論により、isSuccessで分岐後は適切な型が推論される。"
+      },
+      {
+        "file": "src/lib/result.ts",
+        "line_start": 1,
+        "line_end": 9,
+        "description": "Result型のヘルパー関数。success()で成功結果を生成、failure()で失敗結果を生成。コードの可読性を向上。"
+      },
+      {
+        "file": "src/app/(private)/todo/_actions/createTodo.ts",
+        "line_start": 1,
+        "line_end": 26,
+        "description": "Server ActionsでのResult型の使用例。バリデーションエラーやAPIエラーをthrowせずにResult型で返す。成功時はupdateTag()でキャッシュを更新。"
+      },
+      {
+        "file": "src/app/(private)/todo/page.tsx",
+        "line_start": 26,
+        "line_end": 38,
+        "description": "コンポーネントでの部分的エラー表示。use()でPromise<Result<T>>を解決し、isSuccessで分岐。失敗時は部分的にエラーUIを表示し、画面全体は影響なし。"
+      }
+    ]
+  },
+  "metadata": {
+    "tags": [
+      "error-handling",
+      "result-type",
+      "type-safety",
+      "server-actions",
+      "server-components",
+      "error-boundary",
+      "user-experience",
+      "security",
+      "validation",
+      "partial-error-display",
+      "nextjs",
+      "react",
+      "typescript"
+    ],
+    "related_adrs": [
+      "ADR-0003",
+      "ADR-0008"
+    ],
+    "supersedes": null,
+    "superseded_by": null,
+    "author": "AI Assistant",
+    "reviewers": []
+  },
+  "search_keywords": [
+    "エラーハンドリング",
+    "error handling",
+    "Result型",
+    "Result type",
+    "型安全",
+    "type safety",
+    "部分的エラー表示",
+    "partial error display",
+    "Error Boundary",
+    "error.tsx",
+    "global-error.tsx",
+    "Server Actions",
+    "想定済みエラー",
+    "expected error",
+    "予期せぬエラー",
+    "unexpected error",
+    "バリデーションエラー",
+    "validation error",
+    "業務エラー",
+    "business error",
+    "システムエラー",
+    "system error",
+    "try-catch",
+    "throw",
+    "セキュリティ",
+    "security",
+    "ユーザー体験",
+    "user experience",
+    "UX",
+    "エラーメッセージ",
+    "error message",
+    "エラーの正規化",
+    "error normalization",
+    "TypeScript",
+    "型推論",
+    "type inference"
+  ],
+  "vector_embedding": null
+}
