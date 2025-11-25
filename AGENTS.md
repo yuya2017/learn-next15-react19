@@ -107,11 +107,12 @@ specs/
 
 実装前に、`dev-local/frontend-rules.md`を再確認し、以下の重要なルールを遵守してください：
 - **型定義は`type`で統一**（`interface`は使わない）
+- **コンポーネントは`default export`で統一**（Named Exportは使わない）
 - **バレルインポート禁止**（`@/` aliasで個別インポート）
 - **Server Componentを優先**（Client Componentは必要最小限）
 - **`use cache`でキャッシュを明示的に制御**
 - **Suspenseで非同期コンポーネントをラップ**
-- **useEffectでのデータフェッチは禁止**（Server Componentで`async/await`を使用）
+- **クライアントフェッチはTanStack Query + Route Handler**（useEffectでのフェッチは禁止）
 - **Result型でエラーハンドリング**（想定済みエラーは`throw`しない）
 
 #### (2) Serena MCPでシンボルベース編集
@@ -126,7 +127,19 @@ Serena MCPを使って、シンボル（関数、クラス、コンポーネン�
 
 #### (3) コーディング規約
 
+**ファイル命名:**
+- **コンポーネント**: `PascalCase.tsx`（例: `UserProfile.tsx`）
+- **ルーティング用ディレクトリ**: `kebab-case/`（例: `user-profile/`）
+- **その他のファイル**: `camelCase.ts`（例: `fetchUser.ts`, `userSchema.ts`）
+
+**APIファイルの分離:**
+- **Server用**: `*.server.ts`（例: `userApi.server.ts`）
+- **Client用**: `*.client.ts`（例: `userApi.client.ts`）
+- 必ず用途に応じて分離すること
+
+**その他の規約:**
 - TypeScriptの型定義は厳密に（**`type`で統一**）
+- コンポーネントは**`default export`で統一**
 - 日本語コメントで意図を明確に
 - ESLint、Prettierの設定に従う
 - 既存パターンに準拠
@@ -229,8 +242,12 @@ toolName: 'get_errors'
 
 - [ ] `dev-local/frontend-rules.md`を確認済み
 - [ ] 型定義は`type`で統一（`interface`未使用）
+- [ ] コンポーネントは`default export`で統一（Named Export未使用）
+- [ ] ファイル命名規則を遵守（コンポーネント: PascalCase、ディレクトリ: kebab-case、その他: camelCase）
+- [ ] APIファイルは`*.server.ts` / `*.client.ts`で分離
 - [ ] バレルインポート未使用（`@/` aliasで個別インポート）
 - [ ] Server Component優先（Client Componentは必要最小限）
+- [ ] クライアントフェッチはTanStack Query + Route Handler（useEffect未使用）
 - [ ] 既存パターンと一貫性がある
 
 ### 実装後の必須チェック
@@ -247,7 +264,10 @@ toolName: 'get_errors'
 
 1. **frontend-rules.mdは必読**: 実装前に必ず`dev-local/frontend-rules.md`を確認すること
 2. **typeで型定義を統一**: `interface`ではなく`type`を使用すること（frontend-rules.mdのルール）
-3. **MCPツールを積極的に活用**: 調査はKiri、実装はSerena、動作確認はNext.js MCPを使用
-4. **エラーは必ず修正**: チェックでエラーが出たら必ず修正してから次に進むこと
-5. **段階的にコミット**: 大きすぎる変更は避け、小さく区切ってコミットすること
-6. **不明点は質問**: わからないことがあれば、実装前に質問すること
+3. **default exportで統一**: コンポーネントは`default export`を使用し、Named Exportは使わない
+4. **ファイル命名規則を厳守**: コンポーネント（PascalCase）、ルーティング（kebab-case）、その他（camelCase）を区別
+5. **APIファイルを分離**: Server用（`*.server.ts`）とClient用（`*.client.ts`）を必ず分ける
+6. **MCPツールを積極的に活用**: 調査はKiri、実装はSerena、動作確認はNext.js MCPを使用
+7. **エラーは必ず修正**: チェックでエラーが出たら必ず修正してから次に進むこと
+8. **段階的にコミット**: 大きすぎる変更は避け、小さく区切ってコミットすること
+9. **不明点は質問**: わからないことがあれば、実装前に質問すること
