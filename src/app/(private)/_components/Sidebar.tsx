@@ -22,6 +22,11 @@ const navItems = [
     label: 'TODO検索',
     prefetch: true,
   },
+  {
+    href: '/articles',
+    label: '記事アプリ',
+    prefetch: true,
+  },
 ];
 
 /**
