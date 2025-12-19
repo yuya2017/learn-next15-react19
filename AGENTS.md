@@ -11,6 +11,86 @@
   - プロジェクト構造、コーディング規約、Next.js/Reactのベストプラクティスがすべて記載されています
   - 実装前に必ず確認し、ルールに従って実装してください
 
+## Figmaベースの画面実装ワークフロー
+
+Figma MCPを使った画面実装の標準フローです。**UI実装時は必ずこのフローに従ってください。**
+
+### ワークフロー概要
+
+```
+1. Figma MCPでデザイン取得
+   ↓
+2. global.cssパターン調査（初回/不明時）
+   ↓
+3. global.cssへのスタイル追加判断
+   ↓
+4. コンポーネント実装（Serena MCP）
+   ↓
+5. チェック＆動作確認
+```
+
+### 詳細手順
+
+#### Step 1: Figmaデザイン取得
+
+Figma MCPを使ってデザイン情報を取得します：
+
+```
+mcp__figma-mcp__get_design_context
+nodeId: '1:2'  # FigmaのURLから抽出
+```
+
+#### Step 2: global.cssパターン調査【初回推奨】
+
+**Serena MCP**を使って、既存のスタイルパターンを調査します：
+
+**使用タイミング：**
+- 初めてプロジェクトで実装する場合
+- global.cssのパターンが不明な場合
+- フォントサイズやカラーの一貫性を確認したい場合
+
+**調査方法：**
+1. global.cssファイルを直接読む（Read tool）
+2. Serena MCPで既存コンポーネントのスタイル使用例を検索
+3. Serena MCPで特定のコンポーネントのスタイル使用を確認
+
+**調査内容：**
+- 既存のglobal.cssで定義されているスタイルクラス
+- 既存コンポーネントでのグローバルスタイル使用例
+- フォントサイズ、カラー、スペーシングのパターン
+
+#### Step 3: global.cssスタイル管理ルール【必須】
+
+**基本原則：**
+- ✅ **全体で使うスタイルはglobal.cssに定義**
+- ❌ **コンポーネント内でのサイズ・フォントの直書きは基本NG**
+
+**スタイル追加の判断：**
+
+| ケース | 対応 |
+|--------|------|
+| **全体で使う可能性がある** | global.cssに追加 |
+| **そのコンポーネントでしか使わない** | **ユーザーに確認してから**コンポーネント内に記述OK |
+| **既存のglobal.cssクラスがある** | 既存クラスを使用 |
+
+**確認が必要な場合の質問例：**
+```
+「このフォントサイズ（text-xl）はこのコンポーネント専用ですか？
+それとも他でも使う可能性がありますか？
+専用の場合、コンポーネント内に直接記述しますが、よろしいですか？」
+```
+
+#### Step 4: コンポーネント実装
+
+Serena MCPでシンボルベース編集を行います（詳細は「3. 実装」セクション参照）
+
+#### Step 5: チェック＆動作確認
+
+- 型チェック、Lint、ビルド確認
+- Next.js MCPでランタイムエラー確認
+
+---
+
 ## 基本フロー
 
 ### 1. 調査（Investigation）
@@ -27,22 +107,9 @@
 - 状態管理戦略
 - エラーハンドリング戦略
 
-#### (2) Kiri MCPで既存コードを調査
+#### (2) Serena MCPで既存コードを調査
 
-既存の実装パターンを確認するために、Kiri MCPを使用します：
-
-```
-mcp__kiri__context_bundle
-goal: '具体的なキーワード（関数名、コンポーネント名、機能名など）'
-limit: 10
-compact: true
-```
-
-**主なKiri MCPツール:**
-- `mcp__kiri__context_bundle`: 関連コードを自動でランク付けして取得
-- `mcp__kiri__files_search`: キーワードで検索
-- `mcp__kiri__deps_closure`: 依存関係を分析
-- `mcp__kiri__snippets_get`: コードの詳細を取得
+既存の実装パターンを確認するために、Serena MCPを使用します：
 
 #### (3) Serena MCPでシンボル解析
 
@@ -211,9 +278,10 @@ toolName: 'get_errors'
 
 | 変更タイプ | 調査 | 計画作成 | 実装 | チェック |
 |-----------|------|----------|------|----------|
-| **新機能追加** | Kiri + frontend-rules.md | `specs/[feature-name]/` | Serena | type-check, lint, test, build, Next.js MCP |
-| **バグ修正** | Kiri + frontend-rules.md | 不要（小規模） | Serena | type-check, lint, test, build |
-| **リファクタリング** | Kiri + frontend-rules.md | `specs/[feature-name]/`（推奨） | Serena | type-check, lint, test, build |
+| **Figma画面作成** | Serena（global.cssパターン）<br>+ frontend-rules.md | `specs/`（複雑な場合のみ） | Figma MCP → Serena | type-check, lint, build, Next.js MCP |
+| **新機能追加** | Serena + frontend-rules.md | `specs/[feature-name]/` | Serena | type-check, lint, test, build, Next.js MCP |
+| **バグ修正** | Serena + frontend-rules.md | 不要（小規模） | Serena | type-check, lint, test, build |
+| **リファクタリング** | Serena + frontend-rules.md | `specs/[feature-name]/`（推奨） | Serena | type-check, lint, test, build |
 | **ドキュメント更新** | - | 不要 | - | - |
 
 ---
@@ -222,16 +290,15 @@ toolName: 'get_errors'
 
 | フェーズ | 使用MCP | 主な用途 |
 |---------|---------|---------|
-| **調査** | Kiri MCP | コードベース検索、コンテキスト抽出、依存関係分析 |
-| **調査** | Serena MCP | シンボル解析、参照確認 |
+| **デザイン取得** | Figma MCP | Figmaデザインの取得、画面実装の開始 |
+| **調査** | Serena MCP | コードベース検索、シンボル解析、参照確認 |
 | **調査** | Context7 MCP | ライブラリドキュメント取得 |
 | **実装** | Serena MCP | シンボルベース編集、リネーム、挿入・置換 |
 | **動作確認** | Next.js MCP | ランタイムエラー確認、ルート確認 |
 | **詳細検証** | Chrome DevTools MCP | ブラウザ検証、パフォーマンス測定（任意） |
 
-**Kiri vs Serenaの使い分け**:
-- **調査（読み取り）**: Kiri → セマンティック検索、自動ランク付け、依存関係分析
-- **詳細分析**: Serena → シンボル解析、参照確認
+**Serenaの使い分け**:
+- **調査（読み取り）**: Serena → シンボル解析、参照確認
 - **実装（書き込み）**: Serena → シンボル編集、リネーム、挿入・置換
 
 ---
@@ -248,6 +315,8 @@ toolName: 'get_errors'
 - [ ] バレルインポート未使用（`@/` aliasで個別インポート）
 - [ ] Server Component優先（Client Componentは必要最小限）
 - [ ] クライアントフェッチはTanStack Query + Route Handler（useEffect未使用）
+- [ ] **global.cssスタイル管理ルールを確認**（全体で使うスタイルはglobal.cssに定義、コンポーネント内の直書きは基本NG）
+- [ ] **Figma実装時は初回調査でglobal.cssパターンを確認**（Serena MCPまたはRead toolを使用）
 - [ ] 既存パターンと一貫性がある
 
 ### 実装後の必須チェック
@@ -267,7 +336,9 @@ toolName: 'get_errors'
 3. **default exportで統一**: コンポーネントは`default export`を使用し、Named Exportは使わない
 4. **ファイル命名規則を厳守**: コンポーネント（PascalCase）、ルーティング（kebab-case）、その他（camelCase）を区別
 5. **APIファイルを分離**: Server用（`*.server.ts`）とClient用（`*.client.ts`）を必ず分ける
-6. **MCPツールを積極的に活用**: 調査はKiri、実装はSerena、動作確認はNext.js MCPを使用
-7. **エラーは必ず修正**: チェックでエラーが出たら必ず修正してから次に進むこと
-8. **段階的にコミット**: 大きすぎる変更は避け、小さく区切ってコミットすること
-9. **不明点は質問**: わからないことがあれば、実装前に質問すること
+6. **global.cssスタイル管理**: 全体で使うスタイルはglobal.cssに定義、コンポーネント内でのサイズ・フォントの直書きは基本NG（コンポーネント専用の場合はユーザーに確認）
+7. **Figma実装時の初回調査**: global.cssパターンを調査してから実装に入ること（Serena MCPまたはRead toolを使用、スタイルの重複や不整合を防ぐため）
+8. **MCPツールを積極的に活用**: 調査・実装はSerena、動作確認はNext.js MCPを使用
+9. **エラーは必ず修正**: チェックでエラーが出たら必ず修正してから次に進むこと
+10. **コミットはユーザーが実施**: 実装完了後、ユーザーが手動でコミットを行う
+11. **不明点は質問**: わからないことがあれば、実装前に質問すること

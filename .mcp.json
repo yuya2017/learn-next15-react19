@@ -15,7 +15,7 @@
         "--context",
         "ide-assistant",
         "--project",
-        "/Users/yuya_matsuba/workspace/learn-next15-react19",
+        "/Users/yuya_matsuba/workspace/skillAUX/SkillAUX_frontend",
         "--enable-gui-log-window",
         "false",
         "--enable-web-dashboard",
@@ -32,8 +32,12 @@
       "args": ["-y", "next-devtools-mcp@latest"]
     },
     "kiri": {
-      "command": "npx",
-      "args": ["kiri-mcp-server@latest", "--repo", ".", "--db", ".kiri/index.duckdb", "--watch"]
+      "command": "kiri",
+      "args": ["--repo", ".", "--db", ".kiri/index.duckdb", "--watch"]
+    },
+    "figma-mcp": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3845/sse"
     }
   }
 }

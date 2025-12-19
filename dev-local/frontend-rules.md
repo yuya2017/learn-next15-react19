@@ -1,23 +1,24 @@
 ## プロジェクト概要
 
-このプロジェクトは、Next.js 15 / React 19 を使用した最新のWeb アプリケーション開発のベストプラクティスを実装・学習するためのプロジェクトです。App Routerの思想に沿った実装を心がけ、フレームワークが提供する機能を最大限に活用します。
-
-**📘 ADR（Architecture Decision Records）**: このドキュメントで説明されている重要なアーキテクチャ決定は、[dev-local/adr/](./adr/)ディレクトリに詳細な意思決定記録として保管されています。各セクションには対応するADRへのリンクが含まれています。
+このプロジェクトは、Next.js 16 / React 19 を使用した最新のWeb アプリケーション開発のベストプラクティスを実装・学習するためのプロジェクトです。App Routerの思想に沿った実装を心がけ、フレームワークが提供する機能を最大限に活用します。
 
 ## 技術スタック
 
 ### コアフレームワーク
-- **Next.js 15** - App Router
+
+- **Next.js 16** - App Router
 - **React 19** - Server Components / Client Components
 - **TypeScript** - 型安全性の確保
 
 ### 主要ライブラリ
+
 - **TanStack Query (React Query)** - クライアント側のデータフェッチとキャッシュ管理
 - **React Hook Form** - フォーム管理
 - **Zod** - スキーマバリデーション
 - **Zustand** - グローバルステート管理
 
 ### 開発ツール
+
 - **npm** - ランタイム・パッケージマネージャー
 - **ESLint** - 静的解析
 - **Prettier** - コードフォーマット
@@ -27,12 +28,10 @@
 ### 基本方針
 
 1. **App Routerの思想に沿った実装** - Next.js 16のApp Routerが推奨する設計パターンに従う
-2. **型定義は`type`で統一** - `interface`ではなく`type`を使用 → [ADR-0002](../adr/decisions/0002-type-definition-strategy.json)
-3. **Server Componentを優先** - 可能な限りServer Componentを使用し、Client Componentは必要最小限に → [ADR-0003](../adr/decisions/0003-server-component-priority.json)
+2. **型定義は`type`で統一** - `interface`ではなく`type`を使用
+3. **Server Componentを優先** - 可能な限りServer Componentを使用し、Client Componentは必要最小限に
 
 ### ディレクトリ構成
-
-**→ [ADR-0001: プロジェクト構造とディレクトリ構成](../adr/decisions/0001-project-structure.json)**
 
 ```
 src/
@@ -71,15 +70,18 @@ src/
 ### 設計原則
 
 #### 1. Featureベースの構成（コロケーション）
+
 - 画面・機能固有のファイルは、対応する`page.tsx`と同階層のディレクトリに配置
 - 複数箇所で使用するファイルは、`app`と同階層のディレクトリ内に配置
 - 関連するコードを近くに配置し、保守性と可読性を向上
 
 #### 2. プライベートフォルダの活用
+
 - 画面ではないが機能として独立しているものは、プライベートフォルダ（`_xxxxx`）を使用
 - ルーティングの対象外となるため、機能の整理に有用
 
 #### 3. ルートグループによる認証の分離
+
 - `(private)`と`(public)`のルートグループで認証の有無を分割
 - 認証状態に応じたレイアウトやヘッダーの適用が明確
 - Full Route Cache（≒SSG）を確実に適用させるための分離
@@ -98,13 +100,13 @@ src/
 
 ### 分割基準
 
-| 分割基準 | 対応方針 |
-| --- | --- |
-| 条件分岐後のUI（HTML）が30行以上 | 条件分岐ごとにコンポーネントを分割 |
-| 同系UIの繰り返し（リスト行やカードなど） | 繰り返し部分をコンポーネント化 |
-| Hook呼び出しが6個以上 | 関連する内容をカスタムフックとして切り出し |
-| 関連ロジックだけで30〜40行以上 | カスタムフックやユーティリティ関数に切り出し |
-| onClickなどのイベントハンドラが5個以上 | カスタムフックやユーティリティ関数に切り出し |
+| 分割基準                                 | 対応方針                                     |
+| ---------------------------------------- | -------------------------------------------- |
+| 条件分岐後のUI（HTML）が30行以上         | 条件分岐ごとにコンポーネントを分割           |
+| 同系UIの繰り返し（リスト行やカードなど） | 繰り返し部分をコンポーネント化               |
+| Hook呼び出しが6個以上                    | 関連する内容をカスタムフックとして切り出し   |
+| 関連ロジックだけで30〜40行以上           | カスタムフックやユーティリティ関数に切り出し |
+| onClickなどのイベントハンドラが5個以上   | カスタムフックやユーティリティ関数に切り出し |
 
 ### Server Componentのルール
 
@@ -131,14 +133,14 @@ src/
 
 ### 主要ユースケース
 
-| ユースケース | 実装方法 |
-| --- | --- |
-| 初回レンダリング時（静的・キャッシュ可能） | Server Component + `use cache` + `cacheLife` |
-| 初回レンダリング時（動的・ユーザー依存） | Server Component + `use cache: private` or 動的レンダリング + Suspense |
-| 初回レンダリング時（ランタイムAPI使用） | Server Component + 動的レンダリング + Suspense |
-| ユーザー操作時 | Client Component + useQuery + Route Handler |
-| 依存クエリ | Client Component + useQuery + enabled |
-| プリフェッチ | Server Component + Link + prefetch or router.prefetch |
+| ユースケース                               | 実装方法                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| 初回レンダリング時（静的・キャッシュ可能） | Server Component + `use cache` + `cacheLife`                           |
+| 初回レンダリング時（動的・ユーザー依存）   | Server Component + `use cache: private` or 動的レンダリング + Suspense |
+| 初回レンダリング時（ランタイムAPI使用）    | Server Component + 動的レンダリング + Suspense                         |
+| ユーザー操作時                             | Client Component + useQuery + Route Handler                            |
+| 依存クエリ                                 | Client Component + useQuery + enabled                                  |
+| プリフェッチ                               | Server Component + Link + prefetch or router.prefetch                  |
 
 ## データ更新戦略
 
@@ -154,8 +156,6 @@ src/
 
 ## 状態管理戦略
 
-**→ [ADR-0009: 状態管理戦略の決定](../adr/decisions/0009-state-management-strategy.json)**
-
 ### 基本方針
 
 1. **リモートデータは「サーバーフェッチスナップショット」と「サーバーステート」で管理** - 各画面で都度fetch + キャッシュ
@@ -164,20 +164,18 @@ src/
 
 ### 主要ユースケースと実装方法
 
-| ユースケース | カテゴリ | 実装方法 |
-| --- | --- | --- |
-| クライアントデータ + 単一コンポーネント | ローカルステート | useState, useReducer |
-| クライアントデータ + 複数コンポーネント・複数画面 | 小中規模グローバルステート | useContext, Zustand, Jotai |
-| リモートデータ + サーバーフェッチ | サーバーフェッチスナップショット | Server Component + fetch + Data Cache |
-| リモートデータ + クライアントフェッチ | サーバーステート | TanStack Query |
-| 現在の操作状態の再現・共有、リロード保持 | URLステート | searchParams/useSearchParams + Link/router.replace |
-| 入力値・バリデーション管理 | フォームステート | React Hook Form + zod |
-| セッション間・タブ間共有、リロード保持 | ブラウザステート | localStorage, sessionStorage, IndexedDB |
-| ユーザー識別 + 機密情報 | セッション / 認証ステート | httpOnly Cookie、Redis |
+| ユースケース                                      | カテゴリ                         | 実装方法                                           |
+| ------------------------------------------------- | -------------------------------- | -------------------------------------------------- |
+| クライアントデータ + 単一コンポーネント           | ローカルステート                 | useState, useReducer                               |
+| クライアントデータ + 複数コンポーネント・複数画面 | 小中規模グローバルステート       | useContext, Zustand, Jotai                         |
+| リモートデータ + サーバーフェッチ                 | サーバーフェッチスナップショット | Server Component + fetch + Data Cache              |
+| リモートデータ + クライアントフェッチ             | サーバーステート                 | TanStack Query                                     |
+| 現在の操作状態の再現・共有、リロード保持          | URLステート                      | searchParams/useSearchParams + Link/router.replace |
+| 入力値・バリデーション管理                        | フォームステート                 | React Hook Form + zod                              |
+| セッション間・タブ間共有、リロード保持            | ブラウザステート                 | localStorage, sessionStorage, IndexedDB            |
+| ユーザー識別 + 機密情報                           | セッション / 認証ステート        | httpOnly Cookie、Redis                             |
 
 ## キャッシュ戦略
-
-**→ [ADR-0005: キャッシュ戦略（Cache Components）](../adr/decisions/0005-cache-strategy.json)**
 
 ### Next.js 16: 動的がデフォルト、必要な部分を明示的にキャッシュ
 
@@ -190,26 +188,24 @@ src/
 
 ### キャッシュレイヤーの整理
 
-| キャッシュ名 | 場所 | 目的 | 期間 | 制御方法 | 優先度 |
-| --- | --- | --- | --- | --- | --- |
-| Request Memoization | サーバー | 同一レンダー内の重複fetch排除 | レンダー中のみ | 自動（制御不可） | - |
-| **Component Cache** | **サーバー** | **コンポーネント/関数のキャッシュ** | **設定による** | **`use cache` + `cacheLife`** | **⭐️高** |
-| Data Cache (legacy) | サーバー | サーバーフェッチの結果をキャッシュ | 永続的 | `next.revalidate`, `revalidateTag` | 低（非推奨） |
-| TanStack Query Cache | クライアント | クライアントフェッチの結果をキャッシュ | 設定による | `staleTime`, `gcTime`, `invalidateQueries` | 中 |
-| Router Cache | クライアント | ページ遷移時のキャッシュ | セッション中 | next.configの`staleTimes`で設定 | - |
+| キャッシュ名         | 場所         | 目的                                   | 期間           | 制御方法                                   | 優先度       |
+| -------------------- | ------------ | -------------------------------------- | -------------- | ------------------------------------------ | ------------ |
+| Request Memoization  | サーバー     | 同一レンダー内の重複fetch排除          | レンダー中のみ | 自動（制御不可）                           | -            |
+| **Component Cache**  | **サーバー** | **コンポーネント/関数のキャッシュ**    | **設定による** | **`use cache` + `cacheLife`**              | **⭐️高**    |
+| Data Cache (legacy)  | サーバー     | サーバーフェッチの結果をキャッシュ     | 永続的         | `next.revalidate`, `revalidateTag`         | 低（非推奨） |
+| TanStack Query Cache | クライアント | クライアントフェッチの結果をキャッシュ | 設定による     | `staleTime`, `gcTime`, `invalidateQueries` | 中           |
+| Router Cache         | クライアント | ページ遷移時のキャッシュ               | セッション中   | next.configの`staleTimes`で設定            | -            |
 
 ### cacheLifeの選択基準
 
-| プロファイル | 期間 | 用途 |
-| --- | --- | --- |
-| `'seconds'` | 5秒 | ほぼリアルタイム、高頻度更新 |
-| `'minutes'` | 5分 | ユーザー固有データ、中頻度更新 |
-| `'hours'` | 1時間 | 半動的データ、商品一覧、記事一覧 |
-| `'days'` | 1日 | マスタデータ、静的コンテンツ |
+| プロファイル | 期間  | 用途                             |
+| ------------ | ----- | -------------------------------- |
+| `'seconds'`  | 5秒   | ほぼリアルタイム、高頻度更新     |
+| `'minutes'`  | 5分   | ユーザー固有データ、中頻度更新   |
+| `'hours'`    | 1時間 | 半動的データ、商品一覧、記事一覧 |
+| `'days'`     | 1日   | マスタデータ、静的コンテンツ     |
 
 ## エラーハンドリング
-
-**→ [ADR-0006: エラーハンドリング戦略（Result型）](../adr/decisions/0006-error-handling-strategy.json)**
 
 ### 基本方針
 
@@ -238,11 +234,11 @@ export type Result<S> = SuccessResult<S> | ErrorResult;
 
 ### ファイル・ディレクトリの命名規則
 
-| 対象 | 命名規則 | 例 |
-| --- | --- | --- |
-| `app`配下のルーティングになるディレクトリ | ケバブケース | `user-profile/`, `search-results/` |
-| コンポーネントのファイル | アッパーキャメルケース | `UserProfile.tsx`, `SearchForm.tsx` |
-| その他のディレクトリ・ファイル | キャメルケース | `fetchUser.ts`, `userSchema.ts` |
+| 対象                                      | 命名規則               | 例                                  |
+| ----------------------------------------- | ---------------------- | ----------------------------------- |
+| `app`配下のルーティングになるディレクトリ | ケバブケース           | `user-profile/`, `search-results/`  |
+| コンポーネントのファイル                  | アッパーキャメルケース | `UserProfile.tsx`, `SearchForm.tsx` |
+| その他のディレクトリ・ファイル            | キャメルケース         | `fetchUser.ts`, `userSchema.ts`     |
 
 ### 重要なルール
 
@@ -250,7 +246,7 @@ export type Result<S> = SuccessResult<S> | ErrorResult;
 2. **APIクライアントの配置ルール** - サーバー用（`*.server.ts`）とクライアント用（`*.client.ts`）を分ける
 3. **Server Actionsとの連携** - `actions`直下のServer Actions関数では、直接`fetch`処理は書かず、`apis`直下のAPIクライアントをimportして使用
 4. **default exportで統一** - 基本的にコンポーネントは`default export`に統一
-5. **バレルインポート禁止** - `@/` aliasを使用した個別インポートを使用 → [ADR-0004](../adr/decisions/0004-import-strategy.json)
+5. **バレルインポート禁止** - `@/` aliasを使用した個別インポートを使用
 
 ## レビュー観点
 
